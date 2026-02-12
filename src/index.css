@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  input,
+  select,
+  textarea {
+    @apply w-full min-h-[44px];
+  }
+
+  button {
+    @apply min-h-[44px];
+  }
+}
+
+body {
+  @apply bg-bg text-ink;
+}
+
+.card {
+  @apply bg-white rounded-2xl border border-slate-100 shadow-sm;
+}
+
+.table-head {
+  @apply text-xs uppercase tracking-[0.2em] text-slate-500;
+}
+
+.badge {
+  @apply rounded-full px-3 py-1 text-xs font-semibold;
+}
+
+.badge.success {
+  @apply bg-emerald-100 text-emerald-700;
+}
+
+.badge.warning {
+  @apply bg-amber-100 text-amber-700;
+}
+
+.badge.info {
+  @apply bg-blue-100 text-blue-700;
+}
+
+.badge.danger {
+  @apply bg-rose-100 text-rose-700;
+}
+
+.badge.muted {
+  @apply bg-slate-100 text-slate-600;
+}

@@ -1,0 +1,270 @@
+{
+  "users": [
+    {
+      "id": "user-001",
+      "name": "Finora Admin",
+      "email": "admin@finora.id",
+      "password": "$2a$10$suZ38UYo51zG2O7SRL2ZC.3Z35LUXuzM7x4PDWvUYUy0yccda4Yj2",
+      "created_at": "2026-02-12T13:05:07.002Z"
+    }
+  ],
+  "summary": {
+    "totalSaldo": 312700000,
+    "pemasukan": 186250000,
+    "pengeluaran": 143350000,
+    "profit": 42900000
+  },
+  "cashflow": [
+    {
+      "month": "Sep",
+      "in": 95000000,
+      "out": 72000000
+    },
+    {
+      "month": "Okt",
+      "in": 110000000,
+      "out": 82000000
+    },
+    {
+      "month": "Nov",
+      "in": 128000000,
+      "out": 86000000
+    },
+    {
+      "month": "Des",
+      "in": 142000000,
+      "out": 99000000
+    },
+    {
+      "month": "Jan",
+      "in": 186250000,
+      "out": 143350000
+    }
+  ],
+  "projects": [
+    {
+      "id": "proj-001",
+      "client_name": "Nadia & Reza",
+      "phone": "+62 812-5555-7788",
+      "project_name": "Wedding Bali",
+      "project_type": "Wedding",
+      "project_date": "2026-03-12",
+      "location": "Bali",
+      "contract_value": 85000000,
+      "payment_deadline": "2026-03-18",
+      "payments": [],
+      "expenses": [],
+      "user_id": "user-001"
+    },
+    {
+      "id": "proj-002",
+      "client_name": "PT Sinar",
+      "phone": "+62 811-2222-0001",
+      "project_name": "Brand Launch Event",
+      "project_type": "Event",
+      "project_date": "2026-02-20",
+      "location": "Jakarta",
+      "contract_value": 120000000,
+      "payment_deadline": "2026-02-28",
+      "payments": [],
+      "expenses": [],
+      "user_id": "user-001"
+    },
+    {
+      "id": "proj-003",
+      "client_name": "Studio Kana",
+      "phone": "+62 822-9000-1112",
+      "project_name": "Creative Campaign",
+      "project_type": "Jasa Kreatif",
+      "project_date": "2026-01-18",
+      "location": "Bandung",
+      "contract_value": 45000000,
+      "payment_deadline": "2026-01-22",
+      "payments": [],
+      "expenses": [],
+      "user_id": "user-001"
+    }
+  ],
+  "transactions": [
+    {
+      "id": "trx-001",
+      "date": "2026-02-03",
+      "type": "income",
+      "category": "Pelunasan",
+      "project_id": "proj-003",
+      "payment_method": "Transfer",
+      "amount": 15000000,
+      "note": "Tahap akhir",
+      "proof_url": "",
+      "user_id": "user-001"
+    },
+    {
+      "id": "trx-002",
+      "date": "2026-02-05",
+      "type": "expense",
+      "category": "Transport",
+      "project_id": "proj-001",
+      "payment_method": "Cash",
+      "amount": 3500000,
+      "note": "Logistik",
+      "proof_url": "",
+      "user_id": "user-001"
+    },
+    {
+      "id": "trx-003",
+      "date": "2026-02-08",
+      "type": "income",
+      "category": "DP",
+      "project_id": "proj-001",
+      "payment_method": "Transfer",
+      "amount": 30000000,
+      "note": "DP awal",
+      "proof_url": "",
+      "user_id": "user-001"
+    },
+    {
+      "id": "trx-004",
+      "date": "2026-02-10",
+      "type": "expense",
+      "category": "Crew",
+      "project_id": "proj-002",
+      "payment_method": "Cash",
+      "amount": 4200000,
+      "note": "Tenaga harian",
+      "proof_url": "",
+      "user_id": "user-001"
+    },
+    {
+      "id": "trx-005",
+      "date": "2026-02-14",
+      "type": "expense",
+      "category": "Operasional",
+      "project_id": null,
+      "payment_method": "E-Wallet",
+      "amount": 1800000,
+      "note": "Langganan tools",
+      "proof_url": "",
+      "user_id": "user-001"
+    }
+  ],
+  "debts": [
+    {
+      "id": "debt-001",
+      "date": "2026-02-02",
+      "lender_name": "Vendor Lighting",
+      "category": "Usaha",
+      "total_amount": 12000000,
+      "paid_amount": 4000000,
+      "remaining_amount": 8000000,
+      "due_date": "2026-02-14",
+      "status": "Aktif",
+      "note": "Pembayaran per tahap",
+      "payments": [
+        {
+          "id": "debtpay-001",
+          "payment_date": "2026-02-05",
+          "amount": 2000000,
+          "method": "Transfer",
+          "note": "Termin 1"
+        },
+        {
+          "id": "debtpay-002",
+          "payment_date": "2026-02-10",
+          "amount": 2000000,
+          "method": "Cash",
+          "note": "Termin 2"
+        }
+      ],
+      "user_id": "user-001"
+    },
+    {
+      "id": "debt-002",
+      "date": "2026-01-20",
+      "lender_name": "Sewa Sound",
+      "category": "Usaha",
+      "total_amount": 7000000,
+      "paid_amount": 7000000,
+      "remaining_amount": 0,
+      "due_date": "2026-01-28",
+      "status": "Lunas",
+      "note": "Lunas",
+      "payments": [
+        {
+          "id": "debtpay-003",
+          "payment_date": "2026-01-28",
+          "amount": 7000000,
+          "method": "Transfer",
+          "note": "Pelunasan"
+        }
+      ],
+      "user_id": "user-001"
+    },
+    {
+      "id": "debt-003",
+      "date": "2025-12-18",
+      "lender_name": "Pinjaman Modal",
+      "category": "Pribadi",
+      "total_amount": 15000000,
+      "paid_amount": 3000000,
+      "remaining_amount": 12000000,
+      "due_date": "2026-01-10",
+      "status": "Overdue",
+      "note": "Perpanjangan 1x",
+      "payments": [
+        {
+          "id": "debtpay-004",
+          "payment_date": "2025-12-28",
+          "amount": 3000000,
+          "method": "Transfer",
+          "note": "Pembayaran awal"
+        }
+      ],
+      "user_id": "user-001"
+    }
+  ],
+  "analytics": {
+    "profitPerBulan": [
+      42000000,
+      38000000,
+      46500000,
+      51000000,
+      42900000
+    ],
+    "pengeluaranKategori": [
+      {
+        "kategori": "Crew",
+        "nilai": 32000000
+      },
+      {
+        "kategori": "Transport",
+        "nilai": 18000000
+      },
+      {
+        "kategori": "Sewa Alat",
+        "nilai": 22000000
+      },
+      {
+        "kategori": "Editing",
+        "nilai": 14000000
+      },
+      {
+        "kategori": "Operasional",
+        "nilai": 9000000
+      }
+    ],
+    "topProjects": [
+      {
+        "project": "Wedding Bali",
+        "profit": 27500000
+      },
+      {
+        "project": "Creative Campaign",
+        "profit": 21000000
+      },
+      {
+        "project": "Brand Launch Event",
+        "profit": 18500000
+      }
+    ]
+  }
+}
