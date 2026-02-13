@@ -103,13 +103,6 @@ const ACTIVE_TITLES = {
   profile: "Profil"
 };
 
-const MOBILE_NAV_ITEMS = [
-  { id: "dashboard", label: "Home", icon: "⌂" },
-  { id: "transactions", label: "Transaksi", icon: "◷" },
-  { id: "projects", label: "Project", icon: "▦" },
-  { id: "debts", label: "Hutang", icon: "◫" }
-];
-
 export default function App() {
   const [active, setActive] = useState("dashboard");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -1957,12 +1950,6 @@ export default function App() {
                 Export Laporan
               </button>
               <button
-                onClick={openQuickAdd}
-                className="px-4 py-2 rounded-xl bg-primary text-white text-sm font-semibold"
-              >
-                + Tambah Transaksi
-              </button>
-              <button
                 onClick={handleLogout}
                 className="px-4 py-2 rounded-full border border-slate-200 text-sm font-semibold"
               >
@@ -2237,6 +2224,92 @@ export default function App() {
                   <div className="card p-4 sm:p-5">
                     <div className="flex items-center justify-between">
                       <div>
+                        <p className="text-sm text-slate-500">Reminder & Alert</p>
+                        <h4 className="text-base font-semibold">Pantau Deadline</h4>
+                      </div>
+                      <span className="text-xs text-slate-400">Max 5</span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {["Semua", "Client", "Hutang", "Project"].map((filter) => (
+                        <button
+                          key={filter}
+                          onClick={() => setReminderFilter(filter)}
+                          className={`px-3 py-2 min-h-[40px] rounded-full text-[11px] font-semibold ${
+                            reminderFilter === filter
+                              ? "bg-primary text-white"
+                              : "bg-white border border-slate-200 text-slate-500"
+                          }`}
+                        >
+                          {filter}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {filteredReminderItems.length === 0 && (
+                        <div className="rounded-xl border border-dashed border-slate-200 p-3 text-xs text-slate-500">
+                          Tidak ada reminder mendesak.
+                        </div>
+                      )}
+                      {filteredReminderItems.slice(0, 4).map((item) => (
+                        <div key={item.id} className="rounded-xl bg-slate-50 p-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold">{item.title}</p>
+                              <p className="truncate text-[11px] text-slate-500">
+                                {item.type} • {item.subtitle}
+                              </p>
+                            </div>
+                            <span
+                              className={`badge ${
+                                item.status === "Overdue"
+                                  ? "danger"
+                                  : item.status === "Due Soon"
+                                  ? "warning"
+                                  : "muted"
+                              }`}
+                            >
+                              {item.status}
+                            </span>
+                          </div>
+                          <div className="mt-2 flex items-center justify-between">
+                            <p className="text-[11px] text-slate-400">Deadline {formatDate(item.date)}</p>
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() =>
+                                  setSnoozedReminders((prev) => ({
+                                    ...prev,
+                                    [item.id]: new Date(Date.now() + 86400000)
+                                      .toISOString()
+                                      .slice(0, 10)
+                                  }))
+                                }
+                                className="px-2 py-1 rounded-full border border-slate-200 text-[11px] text-slate-600 font-semibold"
+                              >
+                                1 hari
+                              </button>
+                              <button
+                                onClick={() =>
+                                  setSnoozedReminders((prev) => ({
+                                    ...prev,
+                                    [item.id]: new Date(Date.now() + 7 * 86400000)
+                                      .toISOString()
+                                      .slice(0, 10)
+                                  }))
+                                }
+                                className="px-2 py-1 rounded-full border border-slate-200 text-[11px] text-slate-600 font-semibold"
+                              >
+                                7 hari
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="card p-4 sm:p-5">
+                    <div className="flex items-center justify-between">
+                      <div>
                         <p className="text-sm text-slate-500">Project Aktif</p>
                         <h4 className="text-base font-semibold">Sedang Berjalan</h4>
                       </div>
@@ -2309,104 +2382,6 @@ export default function App() {
                       )}
                     </div>
                   </div>
-                </div>
-              </section>
-
-              <section className="hidden md:block card p-4 sm:p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-slate-500">Reminder & Alert</p>
-                    <h3 className="text-lg font-semibold">Pantau Deadline Penting</h3>
-                  </div>
-                  <span className="text-xs text-slate-400">Max 5 item</span>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {["Semua", "Client", "Hutang", "Project"].map((filter) => (
-                    <button
-                      key={filter}
-                      onClick={() => setReminderFilter(filter)}
-                      className={`px-3 py-2 min-h-[44px] rounded-full text-xs font-semibold ${
-                        reminderFilter === filter
-                          ? "bg-primary text-white"
-                          : "bg-white border border-slate-200 text-slate-500"
-                      }`}
-                    >
-                      {filter}
-                    </button>
-                  ))}
-                </div>
-                <div className="mt-4 space-y-3">
-                  {filteredReminderItems.length === 0 && (
-                    <div className="rounded-xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
-                      Tidak ada reminder mendesak.
-                    </div>
-                  )}
-                  {filteredReminderItems.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex flex-col gap-3 rounded-xl bg-slate-50 p-3"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                        <p className="text-sm font-semibold">{item.title}</p>
-                        <p className="text-xs text-slate-500">
-                          {item.type} • {item.subtitle}
-                        </p>
-                        </div>
-                        <span
-                          className={`badge ${
-                            item.status === "Overdue"
-                              ? "danger"
-                              : item.status === "Due Soon"
-                              ? "warning"
-                              : "muted"
-                          }`}
-                        >
-                          {item.status}
-                        </span>
-                      </div>
-                      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
-                        <div className="text-left sm:text-right">
-                        {item.amount !== null && (
-                          <p className="text-sm font-semibold text-primary">
-                            {formatCurrency(item.amount)}
-                          </p>
-                        )}
-                        <p className="text-xs text-slate-400">
-                          Deadline {formatDate(item.date)}
-                        </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() =>
-                              setSnoozedReminders((prev) => ({
-                                ...prev,
-                                [item.id]: new Date(Date.now() + 86400000)
-                                  .toISOString()
-                                  .slice(0, 10)
-                              }))
-                            }
-                            className="px-2 py-1 rounded-full border border-slate-200 text-xs text-slate-600 font-semibold"
-                          >
-                            Snooze 1 hari
-                          </button>
-                          <button
-                            onClick={() =>
-                              setSnoozedReminders((prev) => ({
-                                ...prev,
-                                [item.id]: new Date(Date.now() + 7 * 86400000)
-                                  .toISOString()
-                                  .slice(0, 10)
-                              }))
-                            }
-                            className="px-2 py-1 rounded-full border border-slate-200 text-xs text-slate-600 font-semibold"
-                          >
-                            Snooze 7 hari
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
                 </div>
               </section>
 
@@ -2523,25 +2498,6 @@ export default function App() {
               </section>
             </>
           )}
-
-          <nav className="lg:hidden fixed bottom-3 left-1/2 z-50 w-[calc(100%-1.5rem)] -translate-x-1/2 rounded-3xl border border-slate-200 bg-white/95 px-2 py-2 shadow-card backdrop-blur">
-            <div className="grid grid-cols-4 gap-1">
-              {MOBILE_NAV_ITEMS.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => setActive(item.id)}
-                  className={`min-h-[46px] rounded-2xl px-1 text-[10px] font-semibold transition ${
-                    active === item.id
-                      ? "bg-gradient-to-r from-[#6366f1] to-[#3b82f6] text-white"
-                      : "text-slate-500"
-                  }`}
-                >
-                  <span className="block text-base leading-4">{item.icon}</span>
-                  <span className="block mt-1 truncate">{item.label}</span>
-                </button>
-              ))}
-            </div>
-          </nav>
 
           {active === "projects" && (
             <section className="card p-4 sm:p-6">
@@ -2828,7 +2784,24 @@ export default function App() {
                         </form>
                       )}
                       <div className="mt-4 overflow-x-auto">
-                        <table className="min-w-[520px] w-full text-sm">
+                        <div className="space-y-2 md:hidden">
+                          {(selectedProject.payments || []).length === 0 && (
+                            <div className="rounded-xl border border-dashed border-slate-200 p-3 text-xs text-slate-500">
+                              Belum ada data pemasukan project.
+                            </div>
+                          )}
+                          {(selectedProject.payments || []).map((item, index) => (
+                            <div key={`${item.date}-${index}`} className="rounded-xl bg-slate-50 p-3">
+                              <div className="flex items-center justify-between">
+                                <p className="text-sm font-semibold text-ink">{item.type}</p>
+                                <p className="text-sm font-semibold text-secondary">{formatCurrency(item.amount)}</p>
+                              </div>
+                              <p className="mt-1 text-xs text-slate-500">{formatDate(item.date)} • {item.method}</p>
+                              <p className="mt-1 text-xs text-slate-500">{item.note || "-"}</p>
+                            </div>
+                          ))}
+                        </div>
+                        <table className="hidden md:table min-w-[520px] w-full text-sm">
                           <thead className="table-head">
                             <tr>
                               <th className="py-2 text-left">Tanggal</th>
@@ -2913,7 +2886,24 @@ export default function App() {
                         </form>
                       )}
                       <div className="mt-4 overflow-x-auto">
-                        <table className="min-w-[520px] w-full text-sm">
+                        <div className="space-y-2 md:hidden">
+                          {(selectedProject.expenses || []).length === 0 && (
+                            <div className="rounded-xl border border-dashed border-slate-200 p-3 text-xs text-slate-500">
+                              Belum ada data pengeluaran project.
+                            </div>
+                          )}
+                          {(selectedProject.expenses || []).map((item, index) => (
+                            <div key={`${item.date}-${index}`} className="rounded-xl bg-slate-50 p-3">
+                              <div className="flex items-center justify-between">
+                                <p className="text-sm font-semibold text-ink">{item.category}</p>
+                                <p className="text-sm font-semibold text-rose-600">{formatCurrency(item.amount)}</p>
+                              </div>
+                              <p className="mt-1 text-xs text-slate-500">{formatDate(item.date)}</p>
+                              <p className="mt-1 text-xs text-slate-500">{item.note || "-"}</p>
+                            </div>
+                          ))}
+                        </div>
+                        <table className="hidden md:table min-w-[520px] w-full text-sm">
                           <thead className="table-head">
                             <tr>
                               <th className="py-2 text-left">Tanggal</th>
