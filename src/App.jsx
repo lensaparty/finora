@@ -1938,7 +1938,7 @@ export default function App() {
           <header className="hidden lg:flex lg:flex-row lg:items-center lg:justify-between gap-4">
             <div>
               <p className="text-xs uppercase tracking-[0.28em] text-slate-400">
-                Sistem Manajemen Keuangan
+                {BRAND_NAME} - {BRAND_TAGLINE}
               </p>
               <h2 className="text-3xl font-semibold text-primary mt-2">{ACTIVE_TITLES[active]}</h2>
             </div>
