@@ -29,7 +29,7 @@ export default function Sidebar({
         onClick={onClose}
       />
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white/90 backdrop-blur border-r border-slate-200/70 p-6 gap-10 flex flex-col transform transition-transform duration-200 lg:static lg:translate-x-0 lg:flex ${
+        className={`fixed inset-y-0 left-0 z-50 w-72 bg-[#f3f6fb] border-r border-slate-200/70 p-6 gap-8 flex flex-col transform transition-transform duration-200 lg:static lg:translate-x-0 lg:flex ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -41,48 +41,56 @@ export default function Sidebar({
           ✕
         </button>
         <div className="flex items-center gap-3">
-          <div className="h-11 w-11 rounded-2xl bg-primary text-white font-bold grid place-items-center">
+          <div className="h-11 w-11 rounded-2xl bg-gradient-to-br from-primary to-[#3a6bb0] text-white font-bold grid place-items-center shadow-card">
             {avatar}
           </div>
           <div>
-            <h1 className="text-lg font-semibold text-primary">{businessName || "Finora"}</h1>
-            <p className="text-xs text-slate-500 truncate max-w-[160px]">{userEmail || "-"}</p>
+            <h1 className="text-lg font-semibold text-primary leading-tight">{businessName || "Finora"}</h1>
+            <p className="text-xs text-slate-500 truncate max-w-[180px]">{userEmail || "-"}</p>
           </div>
         </div>
 
-      <nav className="flex flex-col gap-2">
-        {menuItems.map((item) => (
+        <nav className="flex flex-col gap-2">
+          {menuItems.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => {
+                onChange(item.id);
+                onClose();
+              }}
+              className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-medium transition ${
+                active === item.id
+                  ? "bg-primary/10 text-primary"
+                  : "text-slate-600 hover:bg-slate-100"
+              }`}
+            >
+              <span className="text-lg">{item.icon}</span>
+              <span className="flex-1 text-left">{item.label}</span>
+              {item.id === "dashboard" && alertsCount > 0 && (
+                <span className="ml-auto rounded-full bg-rose-100 text-rose-600 text-xs font-semibold px-2 py-0.5">
+                  {alertsCount}
+                </span>
+              )}
+            </button>
+          ))}
+        </nav>
+
+        <div className="mt-auto p-4 rounded-2xl bg-white text-slate-700 shadow-card border border-slate-100">
+          <p className="text-sm font-semibold text-primary">Ringkasannya</p>
+          <p className="text-xs text-slate-500 mt-2">
+            Semua transaksi terpusat, real-time, dan siap dianalisis AI.
+          </p>
           <button
-            key={item.id}
             onClick={() => {
-              onChange(item.id);
+              onChange("reports");
               onClose();
             }}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition ${
-              active === item.id
-                ? "bg-primary/10 text-primary"
-                : "text-slate-600 hover:bg-slate-100"
-            }`}
+            className="mt-3 w-full min-h-[40px] rounded-xl border border-dashed border-slate-300 text-xs font-semibold text-primary hover:bg-slate-50"
           >
-            <span className="text-lg">{item.icon}</span>
-            <span className="flex-1 text-left">{item.label}</span>
-            {item.id === "dashboard" && alertsCount > 0 && (
-              <span className="ml-auto rounded-full bg-rose-100 text-rose-600 text-xs font-semibold px-2 py-0.5">
-                {alertsCount}
-              </span>
-            )}
+            Buat Laporan
           </button>
-        ))}
-      </nav>
-
-      <div className="mt-auto p-4 rounded-xl bg-primary text-white shadow-card">
-        <p className="text-xs uppercase tracking-[0.2em] text-white/70">Insight AI</p>
-        <h3 className="text-lg font-semibold mt-2">Keuangan rapi, tanpa ribet.</h3>
-        <p className="text-xs text-white/70 mt-2">
-          Dapatkan laporan real-time dan prediksi arus kas yang lebih akurat.
-        </p>
-      </div>
-    </aside>
+        </div>
+      </aside>
     </>
   );
 }

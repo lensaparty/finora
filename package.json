@@ -9,7 +9,11 @@
     "dev:server": "node --watch server/index.js",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "android:add": "npx cap add android",
+    "android:sync": "npm run build && npx cap sync android",
+    "android:open": "npx cap open android",
+    "android:apk": "npm run android:sync && cd android && JAVA_HOME=$(/usr/libexec/java_home -v 21) PATH=\"$JAVA_HOME/bin:$PATH\" ./gradlew assembleDebug"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.2",
@@ -22,6 +26,9 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.1.0",
+    "@capacitor/cli": "^8.1.0",
+    "@capacitor/core": "^8.1.0",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.20",
     "concurrently": "^9.0.1",

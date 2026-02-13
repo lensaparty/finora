@@ -26,7 +26,7 @@ export default function LineChart({ data }) {
     <div className="card p-4 sm:p-6">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm text-slate-500">Cash Flow</p>
+          <p className="text-sm text-slate-500">Arus Kas</p>
           <h3 className="text-lg font-semibold">Performa 5 Bulan</h3>
         </div>
         <div className="flex gap-3 text-xs text-slate-500">
@@ -43,7 +43,7 @@ export default function LineChart({ data }) {
 
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        className="w-full mt-4"
+        className="w-full mt-4 rounded-xl bg-slate-50/70 p-2"
         aria-label="Grafik cash flow"
       >
         <defs>

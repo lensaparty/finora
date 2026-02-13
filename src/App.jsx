@@ -91,6 +91,25 @@ const DEBT_CATEGORY_OPTIONS = [
   "Lainnya"
 ];
 
+const BRAND_NAME = "Finora";
+const BRAND_TAGLINE = "Simple Finance for Your Business";
+const ACTIVE_TITLES = {
+  dashboard: "Dashboard",
+  transactions: "Transaksi",
+  projects: "Project",
+  debts: "Hutang & Piutang",
+  reports: "Laporan",
+  analytics: "Analytics",
+  profile: "Profil"
+};
+
+const MOBILE_NAV_ITEMS = [
+  { id: "dashboard", label: "Home", icon: "⌂" },
+  { id: "transactions", label: "Transaksi", icon: "◷" },
+  { id: "projects", label: "Project", icon: "▦" },
+  { id: "debts", label: "Hutang", icon: "◫" }
+];
+
 export default function App() {
   const [active, setActive] = useState("dashboard");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -206,6 +225,9 @@ export default function App() {
   });
   const [showOverdueToast, setShowOverdueToast] = useState(false);
   const [toast, setToast] = useState(null);
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [dismissedNotifIds, setDismissedNotifIds] = useState({});
   const [reminderFilter, setReminderFilter] = useState("Semua");
   const [snoozedReminders, setSnoozedReminders] = useState({});
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
@@ -238,7 +260,7 @@ export default function App() {
   const derivedBusinessName =
     profileData.businessName?.trim() ||
     session?.user?.displayName ||
-    (session?.user?.email ? session.user.email.split("@")[0] : "Finora");
+    (session?.user?.email ? session.user.email.split("@")[0] : BRAND_NAME);
 
   useEffect(() => {
     if (!session?.user) return;
@@ -933,8 +955,8 @@ export default function App() {
         <body>
           <div class="header">
             <div>
-              <div class="brand">FINORA</div>
-              <div class="tagline">Simple Finance for Your Business</div>
+              <div class="brand">${BRAND_NAME.toUpperCase()}</div>
+              <div class="tagline">${BRAND_TAGLINE}</div>
             </div>
             <div class="muted">Tanggal Invoice: ${invoiceForm.invoice_date}</div>
           </div>
@@ -1199,6 +1221,45 @@ export default function App() {
   const totalExpense = allTransactions
     .filter((item) => item.type === "expense")
     .reduce((sum, item) => sum + item.amount, 0);
+  const transactionMonthOptions = [...new Set(allTransactions.map((item) => item.date?.slice(0, 7)))].filter(
+    Boolean
+  );
+  const filteredTransactions = allTransactions.filter((item) => {
+    const searchValue = `${item.category} ${item.note || ""} ${
+      projects.find((p) => p.id === item.project_id)?.project_name || ""
+    }`
+      .toLowerCase()
+      .includes(transactionSearch.toLowerCase());
+    const matchesType =
+      transactionTypeFilter === "Semua" ||
+      (transactionTypeFilter === "Pemasukan" && item.type === "income") ||
+      (transactionTypeFilter === "Pengeluaran" && item.type === "expense");
+    const matchesMonth = transactionMonthFilter === "Semua" || item.date?.slice(0, 7) === transactionMonthFilter;
+    const matchesProject = transactionProjectFilter === "Semua" || item.project_id === transactionProjectFilter;
+    return searchValue && matchesType && matchesMonth && matchesProject;
+  });
+  const filteredProjects = projects.filter((project) => {
+    const matchesSearch = `${project.client_name} ${project.project_name}`
+      .toLowerCase()
+      .includes(projectSearch.toLowerCase());
+    const status = statusLabel(project.payment_status);
+    const todayDate = new Date().toISOString().slice(0, 10);
+    const isActive = status !== "Lunas" && project.project_date >= todayDate;
+    const isBelumLunas = status !== "Lunas";
+    const matchesFilter =
+      projectFilter === "Semua" ||
+      (projectFilter === "Aktif" && isActive) ||
+      (projectFilter === "Lunas" && status === "Lunas") ||
+      (projectFilter === "Belum Lunas" && isBelumLunas);
+    return matchesSearch && matchesFilter;
+  });
+  const filteredDebts = debts.filter((item) => debtFilter === "Semua" || item.status === debtFilter);
+  const debtPaymentHistory = debts.flatMap((item) =>
+    (item.payments || []).map((payment) => ({
+      ...payment,
+      lender_name: item.lender_name
+    }))
+  );
   const currentSaldo = totalIncome - totalExpense;
   const hasTransactions = allTransactions.length > 0;
   const receivableList = projects
@@ -1335,6 +1396,7 @@ export default function App() {
     if (reminderFilter === "Project") return item.type === "Project";
     return true;
   });
+  const visibleReminderItems = reminderItems.filter((item) => !dismissedNotifIds[item.id]);
 
   const overdueClientCount = projects.filter((project) => {
     if (project.remaining_payment <= 0) return false;
@@ -1359,6 +1421,11 @@ export default function App() {
     const timer = setTimeout(() => setToast(null), 2500);
     return () => clearTimeout(timer);
   }, [toast]);
+
+  useEffect(() => {
+    setIsNotifOpen(false);
+    setIsProfileMenuOpen(false);
+  }, [active]);
 
   const exportDebtCsv = () => {
     const rows = [
@@ -1426,7 +1493,7 @@ export default function App() {
           </style>
         </head>
         <body>
-          <h1>Finora - Laporan Hutang</h1>
+          <h1>${BRAND_NAME} - Laporan Hutang</h1>
           <table>
             <thead>
               <tr>
@@ -1484,7 +1551,7 @@ export default function App() {
           </style>
         </head>
         <body>
-          <h1>Finora - Laporan Piutang</h1>
+          <h1>${BRAND_NAME} - Laporan Piutang</h1>
           <table>
             <thead>
               <tr>
@@ -1530,10 +1597,13 @@ export default function App() {
   const projectNameById = Object.fromEntries(
     projects.map((project) => [project.id, project.project_name])
   );
+  const recentTransactions = [...transactions]
+    .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+    .slice(0, 6);
 
   const exportMonthlyReportCsv = () => {
     const rows = [
-      ["Finora - Laporan Bulanan", reportMonthLabel],
+      [`${BRAND_NAME} - Laporan Bulanan`, reportMonthLabel],
       [],
       ["Ringkasan"],
       ["Total Pemasukan", monthlyIncome],
@@ -1586,7 +1656,7 @@ export default function App() {
     const html = `
       <html>
         <head>
-          <title>Finora - Laporan ${reportMonthLabel}</title>
+          <title>${BRAND_NAME} - Laporan ${reportMonthLabel}</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 24px; color: #1f2937; }
             h1 { font-size: 20px; margin: 0; }
@@ -1602,7 +1672,7 @@ export default function App() {
           </style>
         </head>
         <body>
-          <h1>Finora - Laporan Bulanan</h1>
+          <h1>${BRAND_NAME} - Laporan Bulanan</h1>
           <h2>${reportMonthLabel}</h2>
           <div class="meta">Diekspor: ${new Date().toLocaleString("id-ID")}</div>
           <div class="cards">
@@ -1648,130 +1718,132 @@ export default function App() {
 
   if (!session) {
     return (
-      <div className="min-h-screen bg-bg flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-card p-6 w-full max-w-md">
-          <div className="text-center">
-            <div className="h-12 w-12 rounded-2xl bg-primary text-white font-bold grid place-items-center mx-auto">
-              F
-            </div>
-            <h1 className="text-xl font-semibold mt-3">Finora</h1>
-            <p className="text-sm text-slate-500">Simple Finance for Your Business</p>
+      <div className="min-h-screen bg-[#f3f5fb] flex items-center justify-center p-3 sm:p-4">
+        <div className="w-full max-w-md overflow-hidden rounded-[32px] bg-gradient-to-br from-[#4f99ec] via-[#4e82df] to-[#5456d9] shadow-card">
+          <div className="px-6 pt-8 pb-5 text-white">
+            <p className="text-sm tracking-wide opacity-80">{authMode === "login" ? "Sign in" : "Sign up"}</p>
+            <h1 className="mt-2 text-3xl font-semibold">{authMode === "login" ? "Welcome Back" : "Create Account"}</h1>
+            <p className="mt-1 text-sm text-white/80">{BRAND_NAME} - {BRAND_TAGLINE}</p>
           </div>
 
-          <div className="mt-6 flex gap-2">
-            <button
-              onClick={() => setAuthMode("login")}
-              className={`flex-1 px-4 py-2 rounded-full text-sm font-semibold ${
-                authMode === "login" ? "bg-primary text-white" : "border border-slate-200 text-slate-500"
-              }`}
-            >
-              Login
-            </button>
-            <button
-              onClick={() => setAuthMode("register")}
-              className={`flex-1 px-4 py-2 rounded-full text-sm font-semibold ${
-                authMode === "register"
-                  ? "bg-primary text-white"
-                  : "border border-slate-200 text-slate-500"
-              }`}
-            >
-              Register
-            </button>
-          </div>
-
-          {authError && (
-            <div className="mt-4 text-sm text-rose-600 bg-rose-50 border border-rose-100 p-3 rounded-lg">
-              {authError}
+          <div className="relative rounded-t-[34px] bg-[#f7f7fb] px-5 pt-5 pb-6">
+            <div className="mb-4 flex gap-2">
+              <button
+                onClick={() => setAuthMode("login")}
+                className={`flex-1 rounded-full px-4 py-2 text-sm font-semibold ${
+                  authMode === "login"
+                    ? "bg-gradient-to-r from-[#6366f1] to-[#3b82f6] text-white"
+                    : "border border-slate-200 text-slate-500"
+                }`}
+              >
+                Login
+              </button>
+              <button
+                onClick={() => setAuthMode("register")}
+                className={`flex-1 rounded-full px-4 py-2 text-sm font-semibold ${
+                  authMode === "register"
+                    ? "bg-gradient-to-r from-[#6366f1] to-[#3b82f6] text-white"
+                    : "border border-slate-200 text-slate-500"
+                }`}
+              >
+                Register
+              </button>
             </div>
-          )}
 
-          {authMode === "login" ? (
-            <form className="mt-4 grid gap-3" onSubmit={handleLogin}>
-              <input
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                placeholder="Email"
-                type="email"
-                value={loginForm.email}
-                onChange={(event) => setLoginForm((prev) => ({ ...prev, email: event.target.value }))}
-                required
-              />
-              <input
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                placeholder="Password"
-                type="password"
-                value={loginForm.password}
-                onChange={(event) => setLoginForm((prev) => ({ ...prev, password: event.target.value }))}
-                required
-              />
-              <button
-                className="w-full px-4 py-2 rounded-full bg-primary text-white text-sm font-semibold"
-                disabled={authLoading}
-              >
-                {authLoading ? "Loading..." : "Login"}
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  setAuthError("");
-                  try {
-                    await signInWithPopup(auth, googleProvider);
-                  } catch (error) {
-                    setAuthError(error.message);
-                  }
-                }}
-                className="w-full px-4 py-2 rounded-full border border-slate-200 text-sm font-semibold"
-              >
-                Login with Google
-              </button>
-            </form>
-          ) : (
-            <form className="mt-4 grid gap-3" onSubmit={handleRegister}>
-              <input
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                placeholder="Nama"
-                value={registerForm.name}
-                onChange={(event) => setRegisterForm((prev) => ({ ...prev, name: event.target.value }))}
-                required
-              />
-              <input
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                placeholder="Email"
-                type="email"
-                value={registerForm.email}
-                onChange={(event) => setRegisterForm((prev) => ({ ...prev, email: event.target.value }))}
-                required
-              />
-              <input
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                placeholder="Password"
-                type="password"
-                value={registerForm.password}
-                onChange={(event) => setRegisterForm((prev) => ({ ...prev, password: event.target.value }))}
-                required
-              />
-              <input
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                placeholder="Confirm Password"
-                type="password"
-                value={registerForm.confirm}
-                onChange={(event) => setRegisterForm((prev) => ({ ...prev, confirm: event.target.value }))}
-                required
-              />
-              <button
-                className="w-full px-4 py-2 rounded-full bg-primary text-white text-sm font-semibold"
-                disabled={authLoading}
-              >
-                {authLoading ? "Loading..." : "Register"}
-              </button>
-            </form>
-          )}
+            {authError && (
+              <div className="mt-3 text-sm text-rose-600 bg-rose-50 border border-rose-100 p-3 rounded-xl">
+                {authError}
+              </div>
+            )}
+
+            {authMode === "login" ? (
+              <form className="mt-4 grid gap-3" onSubmit={handleLogin}>
+                <input
+                  className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                  placeholder="Email"
+                  type="email"
+                  value={loginForm.email}
+                  onChange={(event) => setLoginForm((prev) => ({ ...prev, email: event.target.value }))}
+                  required
+                />
+                <input
+                  className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                  placeholder="Password"
+                  type="password"
+                  value={loginForm.password}
+                  onChange={(event) => setLoginForm((prev) => ({ ...prev, password: event.target.value }))}
+                  required
+                />
+                <button
+                  className="w-full rounded-2xl bg-gradient-to-r from-[#6366f1] to-[#3b82f6] px-4 py-3 text-sm font-semibold text-white"
+                  disabled={authLoading}
+                >
+                  {authLoading ? "Loading..." : "Login"}
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setAuthError("");
+                    try {
+                      await signInWithPopup(auth, googleProvider);
+                    } catch (error) {
+                      setAuthError(error.message);
+                    }
+                  }}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold"
+                >
+                  Login with Google
+                </button>
+              </form>
+            ) : (
+              <form className="mt-4 grid gap-3" onSubmit={handleRegister}>
+                <input
+                  className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                  placeholder="Nama"
+                  value={registerForm.name}
+                  onChange={(event) => setRegisterForm((prev) => ({ ...prev, name: event.target.value }))}
+                  required
+                />
+                <input
+                  className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                  placeholder="Email"
+                  type="email"
+                  value={registerForm.email}
+                  onChange={(event) => setRegisterForm((prev) => ({ ...prev, email: event.target.value }))}
+                  required
+                />
+                <input
+                  className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                  placeholder="Password"
+                  type="password"
+                  value={registerForm.password}
+                  onChange={(event) => setRegisterForm((prev) => ({ ...prev, password: event.target.value }))}
+                  required
+                />
+                <input
+                  className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                  placeholder="Confirm Password"
+                  type="password"
+                  value={registerForm.confirm}
+                  onChange={(event) => setRegisterForm((prev) => ({ ...prev, confirm: event.target.value }))}
+                  required
+                />
+                <button
+                  className="w-full rounded-2xl bg-gradient-to-r from-[#6366f1] to-[#3b82f6] px-4 py-3 text-sm font-semibold text-white"
+                  disabled={authLoading}
+                >
+                  {authLoading ? "Loading..." : "Register"}
+                </button>
+              </form>
+            )}
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex bg-bg">
+    <div className="min-h-screen flex bg-[radial-gradient(circle_at_top_left,_#e7eef8,_#f5f7fa_40%)]">
       <Sidebar
         active={active}
         onChange={setActive}
@@ -1782,78 +1854,122 @@ export default function App() {
         userEmail={session?.user?.email || profileData.email}
       />
 
-      <main className="flex-1 p-4 sm:p-6 lg:p-10 pb-24 lg:pb-10">
+      <main className="flex-1 p-4 sm:p-6 lg:p-8 pb-28 lg:pb-8">
         <div className="flex flex-col gap-6">
-          <div className="lg:hidden flex items-center justify-between p-4 bg-white border-b border-slate-200 rounded-xl">
-            <button
-              onClick={() => setIsSidebarOpen(true)}
-              className="h-10 w-10 rounded-full border border-slate-200 grid place-items-center text-lg"
-            >
-              ☰
-            </button>
-            <div className="text-sm font-semibold text-primary">
-              {active === "dashboard" && "Dashboard"}
-              {active === "transactions" && "Transaksi"}
-              {active === "projects" && "Project"}
-              {active === "debts" && "Hutang & Piutang"}
-              {active === "reports" && "Laporan"}
-              {active === "analytics" && "Analytics"}
-              {active === "profile" && "Profil"}
+          <div className="lg:hidden relative flex items-center justify-between px-1">
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-400">{BRAND_NAME}</p>
+              <p className="text-lg font-semibold text-primary">{ACTIVE_TITLES[active]}</p>
             </div>
-            <button
-              onClick={handleLogout}
-              className="h-10 px-3 rounded-full border border-slate-200 text-xs font-semibold"
-            >
-              Logout
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setIsProfileMenuOpen((prev) => !prev);
+                  setIsNotifOpen(false);
+                }}
+                className="h-10 w-10 rounded-full border border-slate-200 bg-white text-base"
+                aria-label="Profil"
+              >
+                👤
+              </button>
+              <button
+                onClick={() => {
+                  setIsNotifOpen((prev) => !prev);
+                  setIsProfileMenuOpen(false);
+                }}
+                className="relative h-10 w-10 rounded-full border border-slate-200 bg-white text-base"
+                aria-label="Notifikasi"
+              >
+                🔔
+                {visibleReminderItems.length > 0 && (
+                  <span className="absolute -right-1 -top-1 grid h-5 min-w-[20px] place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold text-white">
+                    {visibleReminderItems.length}
+                  </span>
+                )}
+              </button>
+            </div>
+            {isProfileMenuOpen && (
+              <div className="absolute right-12 top-12 z-40 w-40 rounded-2xl border border-slate-200 bg-white p-2 shadow-card">
+                <button
+                  onClick={() => {
+                    setActive("profile");
+                    setIsProfileMenuOpen(false);
+                  }}
+                  className="w-full rounded-xl px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Menu Profil
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="mt-1 w-full rounded-xl px-3 py-2 text-left text-sm font-medium text-rose-600 hover:bg-rose-50"
+                >
+                  Logout
+                </button>
+              </div>
+            )}
+            {isNotifOpen && (
+              <div className="absolute right-0 top-12 z-40 w-72 rounded-2xl border border-slate-200 bg-white p-3 shadow-card">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-sm font-semibold text-primary">Notifikasi</p>
+                  <button
+                    onClick={() => setIsNotifOpen(false)}
+                    className="text-xs font-semibold text-slate-500"
+                  >
+                    Tutup
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {visibleReminderItems.length === 0 && (
+                    <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">Belum ada notifikasi.</p>
+                  )}
+                  {visibleReminderItems.slice(0, 4).map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() =>
+                        setDismissedNotifIds((prev) => ({
+                          ...prev,
+                          [item.id]: true
+                        }))
+                      }
+                      className="w-full rounded-xl bg-slate-50 p-3 text-left"
+                    >
+                      <p className="text-xs font-semibold text-ink">{item.title}</p>
+                      <p className="text-[11px] text-slate-500">{item.type} • {item.subtitle}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <header className="hidden lg:flex lg:flex-row lg:items-center lg:justify-between gap-4">
             <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
-                Finora – Simple Finance for Your Business
+              <p className="text-xs uppercase tracking-[0.28em] text-slate-400">
+                Sistem Manajemen Keuangan
               </p>
-              <h2 className="text-2xl font-semibold text-primary mt-2">
-                {active === "dashboard" && "Dashboard Keuangan"}
-                {active === "transactions" && "Transaksi"}
-                {active === "projects" && "Project"}
-                {active === "debts" && "Hutang & Piutang"}
-                {active === "reports" && "Laporan"}
-                {active === "analytics" && "Analytics"}
-                {active === "profile" && "Profil"}
-              </h2>
+              <h2 className="text-3xl font-semibold text-primary mt-2">{ACTIVE_TITLES[active]}</h2>
             </div>
-            <button
-              onClick={handleLogout}
-              className="px-4 py-2 rounded-full border border-slate-200 text-sm font-semibold"
-            >
-              Logout
-            </button>
-          </header>
-
-          <div className="lg:hidden flex gap-2 overflow-x-auto pb-2">
-            {[
-              { id: "dashboard", label: "Dashboard" },
-              { id: "transactions", label: "Transaksi" },
-              { id: "projects", label: "Project" },
-              { id: "debts", label: "Hutang & Piutang" },
-              { id: "reports", label: "Laporan" },
-              { id: "analytics", label: "Analytics" },
-              { id: "profile", label: "Profil" }
-            ].map((item) => (
+            <div className="flex items-center gap-2">
               <button
-                key={item.id}
-                onClick={() => setActive(item.id)}
-                className={`whitespace-nowrap px-4 py-2 min-h-[44px] rounded-full text-xs font-semibold ${
-                  active === item.id
-                    ? "bg-primary text-white"
-                    : "bg-white border border-slate-200 text-slate-500"
-                }`}
+                onClick={exportMonthlyReportCsv}
+                className="px-4 py-2 rounded-full border border-slate-200 bg-white text-sm font-semibold text-primary"
               >
-                {item.label}
+                Export Laporan
               </button>
-            ))}
-          </div>
+              <button
+                onClick={openQuickAdd}
+                className="px-4 py-2 rounded-xl bg-primary text-white text-sm font-semibold"
+              >
+                + Tambah Transaksi
+              </button>
+              <button
+                onClick={handleLogout}
+                className="px-4 py-2 rounded-full border border-slate-200 text-sm font-semibold"
+              >
+                Logout
+              </button>
+            </div>
+          </header>
 
           {active === "dashboard" && dataLoading && (
             <>
@@ -1924,152 +2040,279 @@ export default function App() {
                   {isFabOpen ? "×" : "+"}
                 </button>
               </div>
-              <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <SummaryCard
-                  title="Total Saldo"
-                  value={formatCurrency(hasTransactions ? currentSaldo : summary.totalSaldo)}
-                  icon="💼"
-                  accent="bg-primary/10 text-primary"
-                />
-                <SummaryCard
-                  title="Pemasukan Bulan Ini"
-                  value={formatCurrency(hasTransactions ? monthlyIncome : summary.pemasukan)}
-                  icon="📥"
-                  accent="bg-secondary/10 text-secondary"
-                />
-                <SummaryCard
-                  title="Pengeluaran Bulan Ini"
-                  value={formatCurrency(hasTransactions ? monthlyExpense : summary.pengeluaran)}
-                  icon="📤"
-                  accent="bg-amber-100 text-amber-600"
-                />
-                <SummaryCard
-                  title="Profit Bulan Ini"
-                  value={formatCurrency(
-                    hasTransactions ? monthlyIncome - monthlyExpense : summary.profit
-                  )}
-                  icon="✨"
-                  accent="bg-slate-100 text-slate-600"
-                />
-              </section>
 
-              <section className="grid gap-6 xl:grid-cols-[2fr_1fr] order-2 md:order-none">
-                <div className="order-2 md:order-none">
-                  <LineChart data={cashflow} />
-                </div>
-
-                <div className="card p-4 sm:p-6 flex flex-col gap-4 order-1 md:order-none">
-                  <div>
-                    <p className="text-sm text-slate-500">Project Aktif</p>
-                    <h3 className="text-lg font-semibold">Sedang Berjalan</h3>
+              <section className="md:hidden rounded-[28px] bg-gradient-to-br from-[#4f99ec] via-[#4e82df] to-[#5456d9] p-5 text-white shadow-card">
+                <p className="text-xs uppercase tracking-[0.18em] text-white/70">Saldo Saat Ini</p>
+                <h3 className="mt-2 text-3xl font-semibold">
+                  {formatCurrency(hasTransactions ? currentSaldo : summary.totalSaldo)}
+                </h3>
+                <div className="mt-5 grid grid-cols-2 gap-2">
+                  <div className="rounded-2xl bg-white/15 p-3">
+                    <p className="text-[11px] text-white/70">Money In</p>
+                    <p className="mt-1 text-sm font-semibold">
+                      {formatCurrency(hasTransactions ? monthlyIncome : summary.pemasukan)}
+                    </p>
                   </div>
-                  <div className="flex flex-col gap-3">
-                    {projects
-                      .filter((project) => project.payment_status !== "Lunas")
-                      .slice(0, 5)
-                      .map((project) => (
-                      <div key={project.id} className="flex items-center justify-between rounded-xl bg-slate-50 p-3">
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-ink truncate">{project.project_name}</p>
-                          <p className="text-xs text-slate-500 truncate">{project.client_name}</p>
-                        </div>
-                        <span className={`badge ${statusBadge(project.payment_status)}`}>
-                          {project.payment_status}
-                        </span>
-                      </div>
-                    ))}
-                    {projects.filter((project) => project.payment_status !== "Lunas").length === 0 && (
-                      <div className="rounded-xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
-                        Tidak ada project aktif saat ini.
-                      </div>
-                    )}
+                  <div className="rounded-2xl bg-white/15 p-3">
+                    <p className="text-[11px] text-white/70">Money Out</p>
+                    <p className="mt-1 text-sm font-semibold">
+                      {formatCurrency(hasTransactions ? monthlyExpense : summary.pengeluaran)}
+                    </p>
                   </div>
                 </div>
               </section>
 
-              <section className="grid gap-4 md:grid-cols-3 order-4 md:order-none">
-                <div className="card p-4 sm:p-6">
-                  <p className="text-xs text-slate-500">Total Sisa Hutang</p>
-                  <h4 className="text-lg font-semibold text-primary">
-                    {formatCurrency(debtTotals.remaining)}
-                  </h4>
+              <section className="md:hidden card p-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-semibold text-primary">Recent Transactions</h3>
+                  <button
+                    onClick={() => setActive("transactions")}
+                    className="text-xs font-semibold text-primary"
+                  >
+                    Lihat Semua
+                  </button>
                 </div>
-                <div className="card p-4 sm:p-6">
-                  <p className="text-xs text-slate-500">Client Belum Lunas</p>
-                  <h4 className="text-lg font-semibold text-secondary">{unpaidClientsCount}</h4>
-                </div>
-                <div className="card p-4 sm:p-6">
-                  <p className="text-xs text-slate-500">Hutang Overdue</p>
-                  <h4 className="text-lg font-semibold text-rose-600">
-                    {overdueDebts.length} Item
-                  </h4>
-                </div>
-              </section>
-
-              <section className="grid gap-6 xl:grid-cols-[1.3fr_1fr] order-1 md:order-none">
-                <div className="card p-4 sm:p-6 order-1">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-slate-500">Client Belum Lunas</p>
-                      <h3 className="text-lg font-semibold">Piutang Aktif</h3>
+                <div className="mt-3 space-y-2">
+                  {recentTransactions.length === 0 && (
+                    <div className="rounded-xl border border-dashed border-slate-200 p-3 text-xs text-slate-500">
+                      Belum ada transaksi.
                     </div>
-                    <button
-                      onClick={() => {
-                        setActive("debts");
-                        setDebtTab("Piutang");
-                      }}
-                      className="text-xs text-primary font-semibold"
-                    >
-                      Lihat Semua
-                    </button>
-                  </div>
-                  <div className="mt-4 space-y-3">
-                    {receivableList.slice(0, 5).map((item) => (
-                      <div
-                        key={item.client}
-                        className="flex items-center justify-between rounded-xl bg-slate-50 p-3"
+                  )}
+                  {recentTransactions.slice(0, 5).map((item) => (
+                    <div key={item.id} className="flex items-center justify-between rounded-2xl bg-slate-50 px-3 py-2.5">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-ink">{item.category}</p>
+                        <p className="text-[11px] text-slate-500">{formatDate(item.date)}</p>
+                      </div>
+                      <p
+                        className={`whitespace-nowrap text-sm font-semibold ${
+                          item.type === "income" ? "text-secondary" : "text-rose-600"
+                        }`}
                       >
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold">{item.client}</p>
-                          <p className="text-xs text-slate-500 truncate">{item.project}</p>
+                        {item.type === "income" ? "+" : "-"} {formatCurrency(item.amount)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="hidden md:grid gap-6 xl:grid-cols-[1.7fr_1fr]">
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <SummaryCard
+                      title="Total Saldo"
+                      value={formatCurrency(hasTransactions ? currentSaldo : summary.totalSaldo)}
+                      icon="💼"
+                      accent="bg-primary/10 text-primary"
+                    />
+                    <SummaryCard
+                      title="Pemasukan Bulan Ini"
+                      value={formatCurrency(hasTransactions ? monthlyIncome : summary.pemasukan)}
+                      icon="📥"
+                      accent="bg-secondary/10 text-secondary"
+                    />
+                    <SummaryCard
+                      title="Pengeluaran Bulan Ini"
+                      value={formatCurrency(hasTransactions ? monthlyExpense : summary.pengeluaran)}
+                      icon="📤"
+                      accent="bg-amber-100 text-amber-600"
+                    />
+                    <SummaryCard
+                      title="Profit Bulan Ini"
+                      value={formatCurrency(
+                        hasTransactions ? monthlyIncome - monthlyExpense : summary.profit
+                      )}
+                      icon="✨"
+                      accent="bg-slate-100 text-slate-600"
+                    />
+                  </div>
+
+                  <div className="card p-4 sm:p-6">
+                    <LineChart data={cashflow} />
+                  </div>
+
+                  <div className="card p-4 sm:p-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-slate-500">Activity Summary</p>
+                        <h3 className="text-lg font-semibold text-primary">Transaksi Terbaru</h3>
+                      </div>
+                      <button
+                        onClick={() => setActive("transactions")}
+                        className="px-3 py-2 rounded-full border border-slate-200 text-xs font-semibold text-primary"
+                      >
+                        Lihat Semua
+                      </button>
+                    </div>
+                    <div className="mt-4 space-y-2">
+                      {recentTransactions.length === 0 && (
+                        <div className="rounded-xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+                          Belum ada transaksi.
                         </div>
-                        <div className="text-right">
-                          <p className="text-sm font-semibold text-primary">{formatCurrency(item.sisa)}</p>
-                          <p className="text-xs text-slate-400">
-                            Jatuh tempo {formatDate(item.jatuhTempo)}
+                      )}
+                      {recentTransactions.slice(0, 6).map((item) => (
+                        <div
+                          key={item.id}
+                          className="grid grid-cols-[110px_1fr_auto] items-center gap-3 rounded-xl bg-slate-50 px-3 py-2.5"
+                        >
+                          <p className="text-xs text-slate-500">{formatDate(item.date)}</p>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-ink">{item.category}</p>
+                            <p className="truncate text-xs text-slate-500">
+                              {item.project_id
+                                ? projectNameById[item.project_id] || "Project Dihapus"
+                                : "Tanpa Project"}
+                            </p>
+                          </div>
+                          <p
+                            className={`text-sm font-semibold ${
+                              item.type === "income" ? "text-secondary" : "text-rose-600"
+                            }`}
+                          >
+                            {item.type === "income" ? "+" : "-"} {formatCurrency(item.amount)}
                           </p>
                         </div>
-                      </div>
-                    ))}
-                    {receivableList.length === 0 && (
-                      <div className="rounded-xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
-                        Semua client sudah lunas.
-                      </div>
-                    )}
+                      ))}
+                    </div>
                   </div>
                 </div>
 
-                <div className="card p-4 sm:p-6 order-2">
-                  <p className="text-sm text-slate-500">Ringkasan Laba Rugi</p>
-                  <h3 className="text-lg font-semibold">Bulan Ini</h3>
-                  <div className="mt-4 space-y-3 text-sm">
-                    <div className="flex items-center justify-between">
-                      <span>Pemasukan</span>
-                      <span className="font-semibold text-secondary">{formatCurrency(summary.pemasukan)}</span>
+                <div className="space-y-6">
+                  <div className="rounded-[28px] bg-gradient-to-br from-[#2f46d1] via-[#3849d9] to-[#5a47dd] p-5 text-white shadow-card">
+                    <p className="text-xs uppercase tracking-[0.16em] text-white/70">My Balance</p>
+                    <h3 className="mt-2 text-3xl font-semibold">
+                      {formatCurrency(hasTransactions ? currentSaldo : summary.totalSaldo)}
+                    </h3>
+                    <div className="mt-5 grid grid-cols-2 gap-2">
+                      <button
+                        onClick={openQuickAdd}
+                        className="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-primary"
+                      >
+                        + Transaksi
+                      </button>
+                      <button
+                        onClick={openProjectForm}
+                        className="rounded-xl bg-white/20 px-3 py-2 text-xs font-semibold text-white border border-white/30"
+                      >
+                        + Project
+                      </button>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span>Pengeluaran</span>
-                      <span className="font-semibold text-amber-600">{formatCurrency(summary.pengeluaran)}</span>
+                    <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+                      <div className="rounded-xl bg-white/15 p-3">
+                        <p className="text-white/70">Money In</p>
+                        <p className="mt-1 font-semibold">
+                          {formatCurrency(hasTransactions ? monthlyIncome : summary.pemasukan)}
+                        </p>
+                      </div>
+                      <div className="rounded-xl bg-white/15 p-3">
+                        <p className="text-white/70">Money Out</p>
+                        <p className="mt-1 font-semibold">
+                          {formatCurrency(hasTransactions ? monthlyExpense : summary.pengeluaran)}
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between border-t border-slate-100 pt-3">
-                      <span>Profit</span>
-                      <span className="font-semibold text-primary">{formatCurrency(summary.profit)}</span>
+                  </div>
+
+                  <div className="card p-4 sm:p-5">
+                    <p className="text-sm text-slate-500">Indicators</p>
+                    <h4 className="text-base font-semibold">Cashflow Health</h4>
+                    <div className="mt-4 space-y-3">
+                      <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2">
+                        <span className="text-xs text-slate-500">Total Sisa Hutang</span>
+                        <span className="text-sm font-semibold text-primary">
+                          {formatCurrency(debtTotals.remaining)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2">
+                        <span className="text-xs text-slate-500">Client Belum Lunas</span>
+                        <span className="text-sm font-semibold text-secondary">{unpaidClientsCount}</span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2">
+                        <span className="text-xs text-slate-500">Hutang Overdue</span>
+                        <span className="text-sm font-semibold text-rose-600">{overdueDebts.length} Item</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="card p-4 sm:p-5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-slate-500">Project Aktif</p>
+                        <h4 className="text-base font-semibold">Sedang Berjalan</h4>
+                      </div>
+                      <button
+                        onClick={() => setActive("projects")}
+                        className="text-xs font-semibold text-primary"
+                      >
+                        Lihat
+                      </button>
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {projects
+                        .filter((project) => project.payment_status !== "Lunas")
+                        .slice(0, 4)
+                        .map((project) => (
+                          <div
+                            key={project.id}
+                            className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-ink">{project.project_name}</p>
+                              <p className="truncate text-xs text-slate-500">{project.client_name}</p>
+                            </div>
+                            <span className={`badge ${statusBadge(project.payment_status)}`}>
+                              {project.payment_status}
+                            </span>
+                          </div>
+                        ))}
+                      {projects.filter((project) => project.payment_status !== "Lunas").length === 0 && (
+                        <div className="rounded-xl border border-dashed border-slate-200 p-3 text-xs text-slate-500">
+                          Tidak ada project aktif.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="card p-4 sm:p-5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-slate-500">Client Belum Lunas</p>
+                        <h4 className="text-base font-semibold">Piutang Aktif</h4>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setActive("debts");
+                          setDebtTab("Piutang");
+                        }}
+                        className="text-xs font-semibold text-primary"
+                      >
+                        Lihat
+                      </button>
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {receivableList.slice(0, 4).map((item) => (
+                        <div
+                          key={item.client}
+                          className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold">{item.client}</p>
+                            <p className="truncate text-xs text-slate-500">{item.project}</p>
+                          </div>
+                          <p className="text-sm font-semibold text-primary">{formatCurrency(item.sisa)}</p>
+                        </div>
+                      ))}
+                      {receivableList.length === 0 && (
+                        <div className="rounded-xl border border-dashed border-slate-200 p-3 text-xs text-slate-500">
+                          Semua client sudah lunas.
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
               </section>
 
-              <section className="card p-4 sm:p-6">
+              <section className="hidden md:block card p-4 sm:p-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-slate-500">Reminder & Alert</p>
@@ -2167,7 +2410,7 @@ export default function App() {
                 </div>
               </section>
 
-              <section className="card p-4 sm:p-6">
+              <section className="hidden md:block card p-4 sm:p-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-slate-500">Cashflow Forecast</p>
@@ -2281,6 +2524,25 @@ export default function App() {
             </>
           )}
 
+          <nav className="lg:hidden fixed bottom-3 left-1/2 z-50 w-[calc(100%-1.5rem)] -translate-x-1/2 rounded-3xl border border-slate-200 bg-white/95 px-2 py-2 shadow-card backdrop-blur">
+            <div className="grid grid-cols-4 gap-1">
+              {MOBILE_NAV_ITEMS.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => setActive(item.id)}
+                  className={`min-h-[46px] rounded-2xl px-1 text-[10px] font-semibold transition ${
+                    active === item.id
+                      ? "bg-gradient-to-r from-[#6366f1] to-[#3b82f6] text-white"
+                      : "text-slate-500"
+                  }`}
+                >
+                  <span className="block text-base leading-4">{item.icon}</span>
+                  <span className="block mt-1 truncate">{item.label}</span>
+                </button>
+              ))}
+            </div>
+          </nav>
+
           {active === "projects" && (
             <section className="card p-4 sm:p-6">
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -2307,14 +2569,62 @@ export default function App() {
                   </select>
                   <button
                     onClick={() => openProjectForm()}
-                    className="w-full sm:w-auto px-4 py-2 min-h-[44px] rounded-full bg-primary text-white text-sm font-semibold"
+                    className="w-full sm:w-auto px-4 py-2 min-h-[44px] rounded-2xl bg-gradient-to-r from-[#6366f1] to-[#3b82f6] text-white text-sm font-semibold"
                   >
                     + Tambah Project
                   </button>
                 </div>
               </div>
               <div className="mt-4 overflow-x-auto">
-                <table className="min-w-[1280px] w-full table-fixed text-sm">
+                <div className="space-y-3 md:hidden">
+                  {filteredProjects.length === 0 && (
+                    <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+                      Tidak ada project yang sesuai filter.
+                    </div>
+                  )}
+                  {filteredProjects.map((project) => (
+                    <div key={project.id} className="rounded-2xl bg-slate-50 p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-ink truncate">{project.project_name}</p>
+                          <p className="text-xs text-slate-500 truncate">{project.client_name}</p>
+                        </div>
+                        <span className={`badge ${statusBadge(project.payment_status)}`}>{project.payment_status}</span>
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-500">
+                        <div>
+                          <p className="text-[11px]">Nilai Kontrak</p>
+                          <p className="mt-0.5 font-semibold text-ink">{formatCurrency(project.contract_value)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[11px]">Sisa</p>
+                          <p className="mt-0.5 font-semibold text-primary">{formatCurrency(project.remaining_payment)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[11px]">Tanggal Project</p>
+                          <p className="mt-0.5 font-semibold text-ink">{formatDate(project.project_date)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[11px]">Deadline</p>
+                          <p className="mt-0.5 font-semibold text-ink">{formatDate(project.payment_deadline)}</p>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex gap-3 text-xs">
+                        <button onClick={() => setSelectedProjectId(project.id)} className="font-semibold text-primary">
+                          Detail
+                        </button>
+                        <button onClick={() => openProjectForm(project)} className="font-semibold text-slate-500">
+                          Edit
+                        </button>
+                        <button onClick={() => handleProjectDelete(project.id)} className="font-semibold text-rose-500">
+                          Hapus
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <table className="hidden md:table min-w-[1280px] w-full table-fixed text-sm">
                   <colgroup>
                     <col style={{ width: "14%" }} />
                     <col style={{ width: "18%" }} />
@@ -2344,23 +2654,7 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {projects
-                      .filter((project) => {
-                        const matchesSearch = `${project.client_name} ${project.project_name}`
-                          .toLowerCase()
-                          .includes(projectSearch.toLowerCase());
-                        const status = statusLabel(project.payment_status);
-                        const today = new Date().toISOString().slice(0, 10);
-                        const isActive = status !== "Lunas" && project.project_date >= today;
-                        const isBelumLunas = status !== "Lunas";
-                        const matchesFilter =
-                          projectFilter === "Semua" ||
-                          (projectFilter === "Aktif" && isActive) ||
-                          (projectFilter === "Lunas" && status === "Lunas") ||
-                          (projectFilter === "Belum Lunas" && isBelumLunas);
-                        return matchesSearch && matchesFilter;
-                      })
-                      .map((project) => (
+                    {filteredProjects.map((project) => (
                         <tr key={project.id} className="border-b border-slate-100">
                           <td className="px-3 py-3 font-medium">{project.client_name}</td>
                           <td className="px-3 py-3">{project.project_name}</td>
@@ -2406,7 +2700,7 @@ export default function App() {
                             </div>
                           </td>
                         </tr>
-                      ))}
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -2771,15 +3065,15 @@ export default function App() {
           )}
 
           {active === "transactions" && (
-              <section className="card p-4 sm:p-6">
+            <section className="card p-4 sm:p-6">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
                   <p className="text-sm text-slate-500">Transaksi Harian</p>
-                  <h3 className="text-lg font-semibold">Pemasukan & Pengeluaran</h3>
+                  <h3 className="text-xl font-semibold text-primary">Pemasukan & Pengeluaran</h3>
                 </div>
                 <button
                   onClick={() => openTransactionForm()}
-                  className="w-full sm:w-auto px-4 py-2 min-h-[44px] rounded-full bg-primary text-white text-sm font-semibold"
+                  className="w-full sm:w-auto px-4 py-2 min-h-[44px] rounded-2xl bg-gradient-to-r from-[#6366f1] to-[#3b82f6] text-white text-sm font-semibold"
                 >
                   + Tambah Transaksi
                 </button>
@@ -2827,13 +3121,11 @@ export default function App() {
                   onChange={(event) => setTransactionMonthFilter(event.target.value)}
                 >
                   <option value="Semua">Semua Bulan</option>
-                  {[...new Set(allTransactions.map((item) => item.date?.slice(0, 7)))]
-                    .filter(Boolean)
-                    .map((month) => (
-                      <option key={month} value={month}>
-                        {formatMonthLabel(month)}
-                      </option>
-                    ))}
+                  {transactionMonthOptions.map((month) => (
+                    <option key={month} value={month}>
+                      {formatMonthLabel(month)}
+                    </option>
+                  ))}
                 </select>
                 <select
                   className="w-full sm:w-auto px-3 py-2 min-h-[44px] rounded-full border border-slate-200 text-sm"
@@ -2849,7 +3141,49 @@ export default function App() {
                 </select>
               </div>
 
-              <div className="mt-4 overflow-x-auto">
+              <div className="mt-4 space-y-3 md:hidden">
+                {filteredTransactions.length === 0 && (
+                  <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+                    Tidak ada transaksi yang sesuai filter.
+                  </div>
+                )}
+                {filteredTransactions.map((tx) => {
+                  const projectName = projects.find((project) => project.id === tx.project_id)?.project_name || "-";
+                  return (
+                    <div key={tx.id} className="rounded-2xl bg-slate-50 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-ink truncate">{tx.category}</p>
+                          <p className="text-xs text-slate-500">{formatDate(tx.date)}</p>
+                        </div>
+                        <span className={`badge ${tx.type === "income" ? "success" : "danger"}`}>
+                          {tx.type === "income" ? "Pemasukan" : "Pengeluaran"}
+                        </span>
+                      </div>
+                      <div className="mt-2 text-xs text-slate-500 space-y-1">
+                        <p>Project: {projectName}</p>
+                        <p>Metode: {tx.payment_method}</p>
+                        <p>Catatan: {tx.note || "-"}</p>
+                      </div>
+                      <div className="mt-3 flex items-center justify-between">
+                        <p className={`text-sm font-semibold ${tx.type === "income" ? "text-secondary" : "text-rose-600"}`}>
+                          {tx.type === "income" ? "+" : "-"} {formatCurrency(tx.amount)}
+                        </p>
+                        <div className="flex gap-3 text-xs">
+                          <button onClick={() => openTransactionForm(tx)} className="font-semibold text-primary">
+                            Edit
+                          </button>
+                          <button onClick={() => handleTransactionDelete(tx)} className="font-semibold text-rose-500">
+                            Hapus
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-4 hidden md:block overflow-x-auto">
                 <table className="min-w-[900px] w-full text-sm">
                   <thead className="table-head">
                     <tr>
@@ -2864,62 +3198,35 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {allTransactions
-                      .filter((item) => {
-                        const searchValue = `${item.category} ${item.note || ""} ${
-                          projects.find((p) => p.id === item.project_id)?.project_name || ""
-                        }`
-                          .toLowerCase()
-                          .includes(transactionSearch.toLowerCase());
-                        const matchesType =
-                          transactionTypeFilter === "Semua" ||
-                          (transactionTypeFilter === "Pemasukan" && item.type === "income") ||
-                          (transactionTypeFilter === "Pengeluaran" && item.type === "expense");
-                        const matchesMonth =
-                          transactionMonthFilter === "Semua" ||
-                          item.date?.slice(0, 7) === transactionMonthFilter;
-                        const matchesProject =
-                          transactionProjectFilter === "Semua" ||
-                          item.project_id === transactionProjectFilter;
-                        return searchValue && matchesType && matchesMonth && matchesProject;
-                      })
-                      .map((tx) => {
-                        const projectName =
-                          projects.find((project) => project.id === tx.project_id)?.project_name || "-";
-                        return (
-                          <tr key={tx.id} className="border-b border-slate-100">
-                            <td className="py-3">{formatDate(tx.date)}</td>
-                            <td className="py-3">
-                              <span className={`badge ${tx.type === "income" ? "success" : "danger"}`}>
-                                {tx.type === "income" ? "Pemasukan" : "Pengeluaran"}
-                              </span>
-                            </td>
-                            <td className="py-3">{tx.category}</td>
-                            <td className="py-3">{projectName}</td>
-                            <td className="py-3 text-slate-500">{tx.note || "-"}</td>
-                            <td className="py-3">{tx.payment_method}</td>
-                            <td className="py-3 font-semibold text-primary">
-                              {formatCurrency(tx.amount)}
-                            </td>
-                            <td className="py-3">
-                              <div className="flex gap-2 text-xs">
-                                <button
-                                  onClick={() => openTransactionForm(tx)}
-                                  className="text-primary font-semibold"
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  onClick={() => handleTransactionDelete(tx)}
-                                  className="text-rose-500 font-semibold"
-                                >
-                                  Hapus
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
+                    {filteredTransactions.map((tx) => {
+                      const projectName =
+                        projects.find((project) => project.id === tx.project_id)?.project_name || "-";
+                      return (
+                        <tr key={tx.id} className="border-b border-slate-100">
+                          <td className="py-3">{formatDate(tx.date)}</td>
+                          <td className="py-3">
+                            <span className={`badge ${tx.type === "income" ? "success" : "danger"}`}>
+                              {tx.type === "income" ? "Pemasukan" : "Pengeluaran"}
+                            </span>
+                          </td>
+                          <td className="py-3">{tx.category}</td>
+                          <td className="py-3">{projectName}</td>
+                          <td className="py-3 text-slate-500">{tx.note || "-"}</td>
+                          <td className="py-3">{tx.payment_method}</td>
+                          <td className="py-3 font-semibold text-primary">{formatCurrency(tx.amount)}</td>
+                          <td className="py-3">
+                            <div className="flex gap-2 text-xs">
+                              <button onClick={() => openTransactionForm(tx)} className="text-primary font-semibold">
+                                Edit
+                              </button>
+                              <button onClick={() => handleTransactionDelete(tx)} className="text-rose-500 font-semibold">
+                                Hapus
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -3206,8 +3513,55 @@ export default function App() {
                   </div>
 
                   <div className="card p-4 sm:p-6">
+                    <div className="mt-2 space-y-3 md:hidden">
+                      {filteredDebts.length === 0 && (
+                        <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+                          Tidak ada data hutang untuk filter ini.
+                        </div>
+                      )}
+                      {filteredDebts.map((item) => (
+                        <div key={item.id} className="rounded-2xl bg-slate-50 p-4">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-ink">{item.lender_name}</p>
+                              <p className="text-xs text-slate-500">{item.category}</p>
+                            </div>
+                            <span className={`badge ${statusBadge(item.status)}`}>{item.status}</span>
+                          </div>
+                          <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-500">
+                            <div>
+                              <p>Total</p>
+                              <p className="mt-0.5 font-semibold text-ink">{formatCurrency(item.total_amount)}</p>
+                            </div>
+                            <div>
+                              <p>Sisa</p>
+                              <p className="mt-0.5 font-semibold text-primary">{formatCurrency(item.remaining_amount)}</p>
+                            </div>
+                            <div>
+                              <p>Dibayar</p>
+                              <p className="mt-0.5 font-semibold text-ink">{formatCurrency(item.paid_amount)}</p>
+                            </div>
+                            <div>
+                              <p>Due Date</p>
+                              <p className="mt-0.5 font-semibold text-ink">{formatDate(item.due_date)}</p>
+                            </div>
+                          </div>
+                          <div className="mt-3 flex gap-3 text-xs">
+                            <button onClick={() => openDebtForm(item)} className="font-semibold text-primary">
+                              Edit
+                            </button>
+                            <button onClick={() => handleDebtDelete(item.id)} className="font-semibold text-rose-500">
+                              Hapus
+                            </button>
+                            <button onClick={() => openDebtPayment(item)} className="font-semibold text-blue-600">
+                              Bayar
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                     <div className="mt-2 overflow-x-auto">
-                      <table className="min-w-[860px] w-full text-sm">
+                      <table className="hidden md:table min-w-[860px] w-full text-sm">
                         <thead className="table-head">
                           <tr>
                             <th className="py-3 text-left">Tanggal</th>
@@ -3222,9 +3576,7 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody>
-                          {debts
-                            .filter((item) => debtFilter === "Semua" || item.status === debtFilter)
-                            .map((item) => (
+                          {filteredDebts.map((item) => (
                               <tr key={item.id} className="border-b border-slate-100">
                                 <td className="py-3">{formatDate(item.date)}</td>
                                 <td className="py-3 font-medium">{item.lender_name}</td>
@@ -3259,7 +3611,7 @@ export default function App() {
                                   </div>
                                 </td>
                               </tr>
-                            ))}
+                          ))}
                         </tbody>
                       </table>
                     </div>
@@ -3268,8 +3620,25 @@ export default function App() {
                   <div className="card p-4 sm:p-6">
                     <p className="text-sm text-slate-500">Riwayat Pembayaran</p>
                     <h3 className="text-lg font-semibold">History Hutang</h3>
+                    <div className="mt-3 space-y-2 md:hidden">
+                      {debtPaymentHistory.length === 0 && (
+                        <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+                          Belum ada pembayaran hutang.
+                        </div>
+                      )}
+                      {debtPaymentHistory.map((payment) => (
+                        <div key={payment.id} className="rounded-2xl bg-slate-50 p-3">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-semibold">{payment.lender_name}</p>
+                            <p className="text-xs text-slate-500">{formatDate(payment.payment_date)}</p>
+                          </div>
+                          <p className="mt-1 text-sm font-semibold text-primary">{formatCurrency(payment.amount)}</p>
+                          <p className="text-xs text-slate-500">{payment.method} • {payment.note || "-"}</p>
+                        </div>
+                      ))}
+                    </div>
                     <div className="mt-3 overflow-x-auto">
-                      <table className="min-w-[720px] w-full text-sm">
+                      <table className="hidden md:table min-w-[720px] w-full text-sm">
                         <thead className="table-head">
                           <tr>
                             <th className="py-2 text-left">Kepada</th>
@@ -3280,26 +3649,14 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody>
-                          {debts.flatMap((item) =>
-                            (item.payments || []).map((payment) => ({
-                              ...payment,
-                              lender_name: item.lender_name
-                            }))
-                          ).length === 0 && (
+                          {debtPaymentHistory.length === 0 && (
                             <tr>
                               <td className="py-3 text-slate-500" colSpan={5}>
                                 Belum ada pembayaran hutang.
                               </td>
                             </tr>
                           )}
-                          {debts
-                            .flatMap((item) =>
-                              (item.payments || []).map((payment) => ({
-                                ...payment,
-                                lender_name: item.lender_name
-                              }))
-                            )
-                            .map((payment) => (
+                          {debtPaymentHistory.map((payment) => (
                               <tr key={payment.id} className="border-b border-slate-100">
                                 <td className="py-2 font-medium">{payment.lender_name}</td>
                                 <td className="py-2">{formatDate(payment.payment_date)}</td>
@@ -3307,7 +3664,7 @@ export default function App() {
                                 <td className="py-2">{payment.method}</td>
                                 <td className="py-2 text-slate-500">{payment.note || "-"}</td>
                               </tr>
-                            ))}
+                          ))}
                         </tbody>
                       </table>
                     </div>
@@ -3317,8 +3674,48 @@ export default function App() {
 
               {debtTab === "Piutang" && (
                 <div className="card p-4 sm:p-6">
+                  <div className="mt-2 space-y-3 md:hidden">
+                    {receivableList.length === 0 && (
+                      <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+                        Tidak ada data piutang.
+                      </div>
+                    )}
+                    {receivableList.map((item) => {
+                      const overdue = item.jatuhTempo < new Date().toISOString().slice(0, 10);
+                      return (
+                        <div key={item.client} className="rounded-2xl bg-slate-50 p-4">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-ink">{item.client}</p>
+                              <p className="text-xs text-slate-500 truncate">{item.project}</p>
+                            </div>
+                            <span className={`badge ${statusBadge(item.status)}`}>{item.status}</span>
+                          </div>
+                          <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-500">
+                            <div>
+                              <p>Kontrak</p>
+                              <p className="mt-0.5 font-semibold text-ink">{formatCurrency(item.total)}</p>
+                            </div>
+                            <div>
+                              <p>Sisa</p>
+                              <p className="mt-0.5 font-semibold text-primary">{formatCurrency(item.sisa)}</p>
+                            </div>
+                            <div>
+                              <p>Dibayar</p>
+                              <p className="mt-0.5 font-semibold text-ink">{formatCurrency(item.dibayar)}</p>
+                            </div>
+                            <div>
+                              <p>Deadline</p>
+                              <p className="mt-0.5 font-semibold text-ink">{formatDate(item.jatuhTempo)}</p>
+                            </div>
+                          </div>
+                          {overdue && <span className="mt-2 inline-flex badge danger">Overdue</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
                   <div className="mt-2 overflow-x-auto">
-                    <table className="min-w-[760px] w-full text-sm">
+                    <table className="hidden md:table min-w-[760px] w-full text-sm">
                       <thead className="table-head">
                         <tr>
                           <th className="py-3 text-left">Client</th>
@@ -3835,6 +4232,14 @@ export default function App() {
                     </button>
                   </div>
                 </form>
+              </div>
+              <div className="card p-6">
+                <button
+                  onClick={handleLogout}
+                  className="w-full rounded-2xl bg-gradient-to-r from-rose-500 to-rose-600 px-4 py-3 text-sm font-semibold text-white"
+                >
+                  Logout
+                </button>
               </div>
             </section>
           )}
