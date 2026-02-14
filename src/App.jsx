@@ -59,6 +59,8 @@ const downloadCsv = (filename, rows) => {
 
 const statusBadge = (status) => {
   if (status === "Lunas" || status === "Paid") return "success";
+  if (status === "Sent" || status === "Viewed") return "info";
+  if (status === "Follow-up") return "warning";
   if (status === "DP") return "warning";
   if (status === "Aktif") return "info";
   if (status === "Belum Bayar" || status === "Belum Lunas") return "danger";
@@ -114,6 +116,60 @@ const DEBT_CATEGORY_OPTIONS = [
   "Pajak",
   "Lainnya"
 ];
+
+const PROJECT_TEMPLATES = {
+  Wedding: {
+    projectType: "Wedding",
+    checklist: [
+      "Kontrak ditandatangani",
+      "DP diterima",
+      "Vendor utama dikunci",
+      "Timeline hari-H final",
+      "Pelunasan diterima"
+    ],
+    budgets: [
+      { name: "Crew", ratio: 0.35 },
+      { name: "Transport", ratio: 0.1 },
+      { name: "Sewa Alat", ratio: 0.25 },
+      { name: "Editing", ratio: 0.15 },
+      { name: "Operasional", ratio: 0.15 }
+    ]
+  },
+  Event: {
+    projectType: "Event",
+    checklist: [
+      "Brief event disetujui",
+      "DP diterima",
+      "Vendor venue fix",
+      "Run-down siap",
+      "Pelunasan diterima"
+    ],
+    budgets: [
+      { name: "Crew", ratio: 0.3 },
+      { name: "Transport", ratio: 0.15 },
+      { name: "Sewa Alat", ratio: 0.3 },
+      { name: "Operasional", ratio: 0.15 },
+      { name: "Marketing", ratio: 0.1 }
+    ]
+  },
+  Prewedding: {
+    projectType: "Prewedding",
+    checklist: [
+      "Konsep photoshoot final",
+      "DP diterima",
+      "Lokasi & izin fix",
+      "Session shooting selesai",
+      "Pelunasan diterima"
+    ],
+    budgets: [
+      { name: "Crew", ratio: 0.3 },
+      { name: "Transport", ratio: 0.2 },
+      { name: "Sewa Alat", ratio: 0.2 },
+      { name: "Editing", ratio: 0.2 },
+      { name: "Operasional", ratio: 0.1 }
+    ]
+  }
+};
 
 const BRAND_NAME = "Finora";
 const BRAND_TAGLINE = "Simple Finance for Your Business";
@@ -174,6 +230,7 @@ export default function App() {
   const [isProjectFormOpen, setIsProjectFormOpen] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
   const [projectForm, setProjectForm] = useState({
+    template_key: "Wedding",
     client_name: "",
     phone: "",
     project_name: "",
@@ -184,6 +241,10 @@ export default function App() {
     payment_deadline: "",
     dp: "",
     payment_method: "Transfer"
+  });
+  const [reminderRules, setReminderRules] = useState({
+    days: [14, 7, 3, 1],
+    hour: "09:00"
   });
   const [incomeFormOpen, setIncomeFormOpen] = useState(false);
   const [expenseFormOpen, setExpenseFormOpen] = useState(false);
@@ -351,6 +412,15 @@ export default function App() {
         ...savedProfile,
         email: user.email || prev.email
       }));
+      if (savedProfile.reminderRules) {
+        setReminderRules((prev) => ({
+          ...prev,
+          ...savedProfile.reminderRules,
+          days: Array.isArray(savedProfile.reminderRules.days)
+            ? savedProfile.reminderRules.days
+            : prev.days
+        }));
+      }
     } catch (error) {
       setProfileData((prev) => ({
         ...prev,
@@ -372,6 +442,10 @@ export default function App() {
 
     setProfileSaving(true);
     try {
+      const safeRules = {
+        ...reminderRules,
+        days: (reminderRules.days || []).length > 0 ? reminderRules.days : [7, 3, 1]
+      };
       await setDoc(
         doc(db, "profiles", session.user.uid),
         {
@@ -383,10 +457,12 @@ export default function App() {
           city: profileData.city,
           bankAccount: profileData.bankAccount,
           taxId: profileData.taxId,
+          reminderRules: safeRules,
           updated_at: new Date().toISOString()
         },
         { merge: true }
       );
+      setReminderRules(safeRules);
       setIsEditingProfile(false);
       setToast({ type: "success", message: "Profil berhasil disimpan." });
     } catch (error) {
@@ -587,6 +663,24 @@ export default function App() {
     await loadData(session.user.uid);
   };
 
+  const buildTemplatePayload = (templateKey, contractValue) => {
+    const template = PROJECT_TEMPLATES[templateKey];
+    if (!template) {
+      return { template_key: "Custom", budget_plan: [], checklist: [] };
+    }
+    const safeContract = Number(contractValue || 0);
+    const budgetPlan = template.budgets.map((item) => ({
+      name: item.name,
+      planned: Math.round(safeContract * item.ratio)
+    }));
+    const checklist = template.checklist.map((task) => ({ task, done: false }));
+    return {
+      template_key: templateKey,
+      budget_plan: budgetPlan,
+      checklist
+    };
+  };
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       setSession(user ? { user } : null);
@@ -604,6 +698,7 @@ export default function App() {
     const totalPaid = (project.payments || []).reduce((sum, item) => sum + item.amount, 0);
     const totalExpense = (project.expenses || []).reduce((sum, item) => sum + item.amount, 0);
     const remainingPayment = Math.max(project.contract_value - totalPaid, 0);
+    const budgetTotal = (project.budget_plan || []).reduce((sum, item) => sum + Number(item.planned || 0), 0);
     const paymentStatus =
       totalPaid === 0 ? "Belum Bayar" : totalPaid < project.contract_value ? "DP" : "Lunas";
     const overdue = paymentStatus !== "Lunas" && new Date(project.project_date) < new Date();
@@ -614,13 +709,20 @@ export default function App() {
       total_expense: totalExpense,
       remaining_payment: remainingPayment,
       profit: totalPaid - totalExpense,
+      budget_total: budgetTotal,
+      budget_variance: budgetTotal - totalExpense,
+      budget_usage_pct: budgetTotal > 0 ? Math.min((totalExpense / budgetTotal) * 100, 200) : 0,
       payment_status: paymentStatus,
-      overdue
+      overdue,
+      checklist: project.checklist || [],
+      budget_plan: project.budget_plan || [],
+      invoice_history: project.invoice_history || []
     };
   };
 
   const resetProjectForm = () => {
     setProjectForm({
+      template_key: "Wedding",
       client_name: "",
       phone: "",
       project_name: "",
@@ -639,6 +741,7 @@ export default function App() {
     if (project) {
       setEditingProject(project);
       setProjectForm({
+        template_key: project.template_key || "Wedding",
         client_name: project.client_name,
         phone: project.phone || "",
         project_name: project.project_name,
@@ -661,9 +764,15 @@ export default function App() {
     if (!session?.user?.uid) return;
     const contractValue = Number(projectForm.contract_value || 0);
     const dpValue = Number(projectForm.dp || 0);
+    const templateData = buildTemplatePayload(projectForm.template_key, contractValue);
+    const keepExistingTemplateData =
+      editingProject &&
+      editingProject.template_key === projectForm.template_key &&
+      (editingProject.budget_plan?.length || editingProject.checklist?.length);
 
     const payload = {
       user_id: session.user.uid,
+      template_key: projectForm.template_key,
       client_name: projectForm.client_name,
       phone: projectForm.phone,
       project_name: projectForm.project_name,
@@ -672,6 +781,8 @@ export default function App() {
       location: projectForm.location,
       contract_value: contractValue,
       payment_deadline: projectForm.payment_deadline,
+      budget_plan: keepExistingTemplateData ? editingProject.budget_plan : templateData.budget_plan,
+      checklist: keepExistingTemplateData ? editingProject.checklist : templateData.checklist,
       total_paid: 0,
       total_expense: 0
     };
@@ -680,6 +791,7 @@ export default function App() {
       const optimistic = enrichLocalProject({
         ...editingProject,
         ...payload,
+        invoice_history: editingProject.invoice_history || [],
         payments: editingProject.payments || [],
         expenses: editingProject.expenses || []
       });
@@ -692,6 +804,7 @@ export default function App() {
       const optimistic = enrichLocalProject({
         ...payload,
         id: created.id,
+        invoice_history: [],
         payments: dpValue
           ? [
               {
@@ -747,6 +860,25 @@ export default function App() {
     } catch (error) {
       setProjects(previousProjects);
       setToast({ type: "error", message: "Gagal menghapus project. Cek izin Firestore." });
+    }
+  };
+
+  const toggleChecklistTask = async (projectId, index) => {
+    const target = projects.find((project) => project.id === projectId);
+    if (!target) return;
+    const nextChecklist = (target.checklist || []).map((item, itemIndex) =>
+      itemIndex === index ? { ...item, done: !item.done } : item
+    );
+    setProjects((prev) =>
+      prev.map((item) =>
+        item.id === projectId ? enrichLocalProject({ ...item, checklist: nextChecklist }) : item
+      )
+    );
+    try {
+      await updateDoc(doc(db, "projects", projectId), { checklist: nextChecklist });
+    } catch (error) {
+      setToast({ type: "error", message: "Checklist gagal diperbarui." });
+      await refreshData();
     }
   };
 
@@ -957,7 +1089,20 @@ export default function App() {
     setInvoiceForm((prev) => ({ ...prev, type, amount: prev.amount || 0 }));
   };
 
-  const generateInvoicePdf = () => {
+  const updateProjectInvoiceHistory = async (projectId, updater) => {
+    const target = projects.find((project) => project.id === projectId);
+    if (!target) return;
+    const currentHistory = target.invoice_history || [];
+    const nextHistory = typeof updater === "function" ? updater(currentHistory) : updater;
+    await updateDoc(doc(db, "projects", projectId), { invoice_history: nextHistory });
+    setProjects((prev) =>
+      prev.map((item) =>
+        item.id === projectId ? enrichLocalProject({ ...item, invoice_history: nextHistory }) : item
+      )
+    );
+  };
+
+  const generateInvoicePdf = async () => {
     if (!selectedProject) return;
     const amountValue = Number(invoiceForm.amount || 0);
     const invoiceTitle = `Invoice-${selectedProject.client_name}-${invoiceForm.invoice_date}`;
@@ -1019,6 +1164,27 @@ export default function App() {
     win.document.close();
     win.focus();
     win.print();
+
+    try {
+      const now = new Date().toISOString();
+      const invoiceRow = {
+        id: `inv-${Date.now()}`,
+        type: invoiceForm.type,
+        amount: amountValue,
+        invoice_date: invoiceForm.invoice_date,
+        due_date: invoiceForm.due_date,
+        note: invoiceForm.note || "",
+        status: "Sent",
+        follow_up_count: 0,
+        sent_at: now,
+        updated_at: now
+      };
+      await updateProjectInvoiceHistory(selectedProject.id, (history) => [invoiceRow, ...history]);
+      setToast({ type: "success", message: "Invoice dibuat dan tracker follow-up diperbarui." });
+      setIsInvoiceOpen(false);
+    } catch (error) {
+      setToast({ type: "error", message: "PDF berhasil, tapi tracker invoice gagal diperbarui." });
+    }
   };
 
   const markInvoiceAsPaid = async () => {
@@ -1036,9 +1202,32 @@ export default function App() {
       proof_url: ""
     };
     await addDoc(collection(db, "transactions"), newTransaction);
+    await updateProjectInvoiceHistory(selectedProject.id, (history) => {
+      const firstOpen = history.find((item) => item.status !== "Paid");
+      if (!firstOpen) return history;
+      return history.map((item) =>
+        item.id === firstOpen.id
+          ? { ...item, status: "Paid", updated_at: new Date().toISOString() }
+          : item
+      );
+    });
     await refreshData();
     setIsInvoiceOpen(false);
     setToast({ type: "success", message: "Invoice ditandai sebagai lunas." });
+  };
+
+  const updateInvoiceTrackerStatus = async (invoiceId, patch) => {
+    if (!selectedProject) return;
+    try {
+      await updateProjectInvoiceHistory(selectedProject.id, (history) =>
+        history.map((item) =>
+          item.id === invoiceId ? { ...item, ...patch, updated_at: new Date().toISOString() } : item
+        )
+      );
+      setToast({ type: "success", message: "Status invoice diperbarui." });
+    } catch (error) {
+      setToast({ type: "error", message: "Gagal memperbarui tracker invoice." });
+    }
   };
 
   const applyTransactionToProject = (project, transaction) => {
@@ -1351,13 +1540,15 @@ export default function App() {
       : "Risiko Minus";
 
   const todayKey = new Date().toISOString().slice(0, 10);
+  const configuredReminderDays = [...(reminderRules.days || [14, 7, 3, 1])]
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value >= 1)
+    .sort((a, b) => b - a);
   const reminderLabel = (days) => {
     if (days === null) return "";
     if (days < 0) return "Overdue";
     if (days === 0) return "Hari Ini";
-    if (days === 1) return "Besok";
-    if (days <= 3) return "H-3";
-    if (days <= 7) return "H-7";
+    if ((configuredReminderDays || []).includes(days)) return `H-${days}`;
     return "";
   };
   const reminderItems = [
@@ -1367,7 +1558,7 @@ export default function App() {
         const days = daysUntil(project.payment_deadline);
         let status = "Normal";
         if (days !== null && days < 0) status = "Overdue";
-        else if (days !== null && days <= 7) status = "Due Soon";
+        else if (days !== null && ((configuredReminderDays || []).includes(days) || days === 0)) status = "Due Soon";
         return {
           id: `rem-client-${project.id}`,
           type: "Client",
@@ -1385,7 +1576,7 @@ export default function App() {
         const days = daysUntil(debt.due_date);
         let status = "Normal";
         if (days !== null && days < 0) status = "Overdue";
-        else if (days !== null && days <= 7) status = "Due Soon";
+        else if (days !== null && ((configuredReminderDays || []).includes(days) || days === 0)) status = "Due Soon";
         return {
           id: `rem-debt-${debt.id}`,
           type: "Hutang",
@@ -1401,7 +1592,7 @@ export default function App() {
       const days = daysUntil(project.project_date);
       let status = "Normal";
       if (days !== null && days < 0) status = "Overdue";
-      else if (days !== null && days <= 7) status = "Due Soon";
+      else if (days !== null && ((configuredReminderDays || []).includes(days) || days === 0)) status = "Due Soon";
       return {
         id: `rem-project-${project.id}`,
         type: "Project",
@@ -1467,6 +1658,39 @@ export default function App() {
   ]
     .sort((a, b) => new Date(a.date) - new Date(b.date))
     .slice(0, 6);
+
+  const todayAgendaItems = [
+    ...projects
+      .filter((project) => daysUntil(project.project_date) === 0)
+      .map((project) => ({
+        id: `today-project-${project.id}`,
+        type: "Project",
+        title: project.project_name,
+        subtitle: project.client_name,
+        date: project.project_date,
+        amount: null
+      })),
+    ...projects
+      .filter((project) => project.remaining_payment > 0 && daysUntil(project.payment_deadline) === 0)
+      .map((project) => ({
+        id: `today-client-${project.id}`,
+        type: "Client",
+        title: project.client_name,
+        subtitle: `Deadline pelunasan ${project.project_name}`,
+        date: project.payment_deadline,
+        amount: project.remaining_payment
+      })),
+    ...debts
+      .filter((debt) => debt.remaining_amount > 0 && daysUntil(debt.due_date) === 0)
+      .map((debt) => ({
+        id: `today-debt-${debt.id}`,
+        type: "Hutang",
+        title: debt.lender_name,
+        subtitle: debt.category,
+        date: debt.due_date,
+        amount: debt.remaining_amount
+      }))
+  ];
 
   const filteredReminderItems = reminderItems.filter((item) => {
     if (reminderFilter === "Semua") return true;
@@ -2242,6 +2466,42 @@ export default function App() {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm text-slate-500">Daily Agenda</p>
+                        <h3 className="text-lg font-semibold text-primary">Hari Ini Ada Apa</h3>
+                      </div>
+                      <span className="text-xs text-slate-400">{formatDate(new Date().toISOString())}</span>
+                    </div>
+                    <div className="mt-4 space-y-2">
+                      {todayAgendaItems.length === 0 && (
+                        <div className="rounded-xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+                          Tidak ada agenda hari ini.
+                        </div>
+                      )}
+                      {todayAgendaItems.map((item) => (
+                        <div
+                          key={item.id}
+                          className="grid grid-cols-[80px_1fr_auto] items-center gap-3 rounded-xl bg-slate-50 px-3 py-2.5"
+                        >
+                          <span className="badge muted">{item.type}</span>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-ink">{item.title}</p>
+                            <p className="truncate text-xs text-slate-500">{item.subtitle}</p>
+                          </div>
+                          {item.amount !== null ? (
+                            <span className="text-sm font-semibold text-primary">
+                              {formatCurrency(item.amount)}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-slate-400">—</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="card p-4 sm:p-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-slate-500">Daily Agenda</p>
                         <h3 className="text-lg font-semibold text-primary">7 Hari Ke Depan</h3>
                       </div>
                       <span className="text-xs text-slate-400">Project • Client • Hutang</span>
@@ -2922,6 +3182,138 @@ export default function App() {
                     >
                       Generate Invoice
                     </button>
+                  </div>
+
+                  <div className="mt-6 grid gap-6 xl:grid-cols-3">
+                    <div className="card p-4 sm:p-5">
+                      <p className="text-sm text-slate-500">Budget vs Actual</p>
+                      <h4 className="text-base font-semibold">Kontrol Budget Project</h4>
+                      <div className="mt-3 space-y-2 text-sm">
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-500">Budget Planning</span>
+                          <span className="font-semibold">
+                            {formatCurrency(selectedProject.budget_total || selectedProject.contract_value)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-500">Actual Expense</span>
+                          <span className="font-semibold text-rose-600">
+                            {formatCurrency(selectedProject.total_expense)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-500">Sisa Budget</span>
+                          <span
+                            className={`font-semibold ${
+                              (selectedProject.budget_variance || 0) >= 0
+                                ? "text-secondary"
+                                : "text-rose-600"
+                            }`}
+                          >
+                            {formatCurrency(selectedProject.budget_variance || 0)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="mt-3 h-2 rounded-full bg-slate-100 overflow-hidden">
+                        <div
+                          className={`h-2 ${
+                            (selectedProject.budget_usage_pct || 0) > 100 ? "bg-rose-500" : "bg-secondary"
+                          }`}
+                          style={{ width: `${Math.min(selectedProject.budget_usage_pct || 0, 100)}%` }}
+                        ></div>
+                      </div>
+                      <p className="mt-2 text-xs text-slate-500">
+                        Pemakaian budget {Math.round(selectedProject.budget_usage_pct || 0)}%
+                      </p>
+                    </div>
+
+                    <div className="card p-4 sm:p-5">
+                      <p className="text-sm text-slate-500">Checklist Project</p>
+                      <h4 className="text-base font-semibold">Progress Operasional</h4>
+                      <div className="mt-3 space-y-2">
+                        {(selectedProject.checklist || []).length === 0 && (
+                          <div className="rounded-xl border border-dashed border-slate-200 p-3 text-xs text-slate-500">
+                            Belum ada checklist template.
+                          </div>
+                        )}
+                        {(selectedProject.checklist || []).map((task, index) => (
+                          <label
+                            key={`${task.task}-${index}`}
+                            className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={!!task.done}
+                              onChange={() => toggleChecklistTask(selectedProject.id, index)}
+                            />
+                            <span
+                              className={`text-sm ${
+                                task.done ? "line-through text-slate-400" : "text-ink"
+                              }`}
+                            >
+                              {task.task}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="card p-4 sm:p-5">
+                      <p className="text-sm text-slate-500">Invoice Follow-up Tracker</p>
+                      <h4 className="text-base font-semibold">Tracking Invoice</h4>
+                      <div className="mt-3 space-y-2">
+                        {(selectedProject.invoice_history || []).length === 0 && (
+                          <div className="rounded-xl border border-dashed border-slate-200 p-3 text-xs text-slate-500">
+                            Belum ada invoice. Gunakan tombol Generate Invoice.
+                          </div>
+                        )}
+                        {(selectedProject.invoice_history || []).slice(0, 4).map((invoice) => (
+                          <div key={invoice.id} className="rounded-xl bg-slate-50 p-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <p className="text-sm font-semibold">{invoice.type}</p>
+                                <p className="text-xs text-slate-500">
+                                  {formatDate(invoice.invoice_date)} • {formatCurrency(invoice.amount)}
+                                </p>
+                              </div>
+                              <span className={`badge ${statusBadge(invoice.status)}`}>{invoice.status}</span>
+                            </div>
+                            <p className="mt-1 text-xs text-slate-500">
+                              Follow-up: {invoice.follow_up_count || 0}x
+                            </p>
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              <button
+                                onClick={() =>
+                                  updateInvoiceTrackerStatus(invoice.id, { status: "Viewed" })
+                                }
+                                className="px-2 py-1 rounded-full border border-slate-200 text-[11px] font-semibold text-slate-600"
+                              >
+                                Viewed
+                              </button>
+                              <button
+                                onClick={() =>
+                                  updateInvoiceTrackerStatus(invoice.id, {
+                                    status: invoice.status === "Paid" ? "Paid" : "Follow-up",
+                                    follow_up_count: Number(invoice.follow_up_count || 0) + 1
+                                  })
+                                }
+                                className="px-2 py-1 rounded-full border border-slate-200 text-[11px] font-semibold text-slate-600"
+                              >
+                                Follow Up
+                              </button>
+                              <button
+                                onClick={() =>
+                                  updateInvoiceTrackerStatus(invoice.id, { status: "Paid" })
+                                }
+                                className="px-2 py-1 rounded-full border border-slate-200 text-[11px] font-semibold text-secondary"
+                              >
+                                Paid
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
 
                   <div className="mt-6 grid gap-6 xl:grid-cols-2">
@@ -4372,6 +4764,62 @@ export default function App() {
                 </div>
               </div>
               <div className="card p-6">
+                <p className="text-xs text-slate-500">Reminder Rules Custom</p>
+                <h4 className="text-sm font-semibold mt-1">Atur Jadwal Pengingat</h4>
+                <p className="mt-1 text-xs text-slate-500">
+                  Pilih trigger reminder project/client/hutang: H-14, H-7, H-3, H-1 dan jam notifikasi.
+                </p>
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <div className="rounded-xl bg-slate-50 p-4">
+                    <p className="text-xs text-slate-500 mb-2">Hari Pengingat</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[14, 7, 3, 1].map((day) => {
+                        const isActive = (reminderRules.days || []).includes(day);
+                        return (
+                          <button
+                            key={day}
+                            type="button"
+                            onClick={() => {
+                              if (!isEditingProfile) return;
+                              setReminderRules((prev) => {
+                                const exists = (prev.days || []).includes(day);
+                                const nextDays = exists
+                                  ? (prev.days || []).filter((value) => value !== day)
+                                  : [...(prev.days || []), day];
+                                return { ...prev, days: nextDays.sort((a, b) => b - a) };
+                              });
+                            }}
+                            className={`rounded-full px-3 py-2 text-xs font-semibold ${
+                              isActive ? "bg-primary text-white" : "border border-slate-200 text-slate-500"
+                            } ${!isEditingProfile ? "opacity-70 cursor-default" : ""}`}
+                          >
+                            H-{day}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-4">
+                    <p className="text-xs text-slate-500 mb-2">Jam Notifikasi</p>
+                    {isEditingProfile ? (
+                      <input
+                        type="time"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                        value={reminderRules.hour}
+                        onChange={(event) =>
+                          setReminderRules((prev) => ({ ...prev, hour: event.target.value }))
+                        }
+                      />
+                    ) : (
+                      <p className="text-sm font-semibold">{reminderRules.hour}</p>
+                    )}
+                    <p className="mt-2 text-[11px] text-slate-400">
+                      Simpan profil untuk menerapkan rules reminder.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="card p-6">
                 <p className="text-xs text-slate-500">Keamanan Akun</p>
                 <h4 className="text-sm font-semibold mt-1">
                   {isGoogleAccount ? "Set / Update Password" : "Ganti Password"}
@@ -4491,6 +4939,24 @@ export default function App() {
               <div>
                 <p className="text-xs text-slate-500 mb-2">Informasi Project</p>
                 <div className="grid gap-3 md:grid-cols-2">
+                  <QuickSelect
+                    id="projectTemplate"
+                    label="Template project"
+                    value={projectForm.template_key}
+                    options={[
+                      { value: "Wedding", label: "Template Wedding" },
+                      { value: "Event", label: "Template Event" },
+                      { value: "Prewedding", label: "Template Prewedding" },
+                      { value: "Custom", label: "Tanpa Template" }
+                    ]}
+                    onChange={(value) =>
+                      setProjectForm((prev) => ({
+                        ...prev,
+                        template_key: value,
+                        project_type: PROJECT_TEMPLATES[value]?.projectType || prev.project_type
+                      }))
+                    }
+                  />
                   <input
                     className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
                     placeholder="Nama Project"
