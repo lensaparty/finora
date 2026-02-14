@@ -78,6 +78,30 @@ const daysUntil = (dateValue) => {
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
 };
 
+const localYmd = (dateValue) => {
+  const date = new Date(dateValue);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}${m}${d}`;
+};
+
+const toGoogleCalendarLink = ({ title, date, details }) => {
+  if (!date) return "#";
+  const start = new Date(date);
+  const end = new Date(date);
+  end.setDate(end.getDate() + 1);
+  const startYmd = localYmd(start);
+  const endYmd = localYmd(end);
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: title,
+    dates: `${startYmd}/${endYmd}`,
+    details
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+};
+
 const DEBT_CATEGORY_OPTIONS = [
   "Operasional Bisnis",
   "Modal Project",
@@ -102,6 +126,12 @@ const ACTIVE_TITLES = {
   analytics: "Analytics",
   profile: "Profil"
 };
+const MOBILE_NAV_ITEMS = [
+  { id: "dashboard", label: "Home", icon: "home" },
+  { id: "transactions", label: "Transaksi", icon: "history" },
+  { id: "projects", label: "Project", icon: "grid_view" },
+  { id: "debts", label: "Hutang", icon: "receipt_long" }
+];
 
 export default function App() {
   const [active, setActive] = useState("dashboard");
@@ -120,6 +150,9 @@ export default function App() {
     email: "",
     password: ""
   });
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showRegisterPassword, setShowRegisterPassword] = useState(false);
+  const [showRegisterConfirmPassword, setShowRegisterConfirmPassword] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileData, setProfileData] = useState({
@@ -1318,6 +1351,15 @@ export default function App() {
       : "Risiko Minus";
 
   const todayKey = new Date().toISOString().slice(0, 10);
+  const reminderLabel = (days) => {
+    if (days === null) return "";
+    if (days < 0) return "Overdue";
+    if (days === 0) return "Hari Ini";
+    if (days === 1) return "Besok";
+    if (days <= 3) return "H-3";
+    if (days <= 7) return "H-7";
+    return "";
+  };
   const reminderItems = [
     ...projects
       .filter((project) => project.remaining_payment > 0)
@@ -1325,7 +1367,7 @@ export default function App() {
         const days = daysUntil(project.payment_deadline);
         let status = "Normal";
         if (days !== null && days < 0) status = "Overdue";
-        else if (days !== null && days <= 3) status = "Due Soon";
+        else if (days !== null && days <= 7) status = "Due Soon";
         return {
           id: `rem-client-${project.id}`,
           type: "Client",
@@ -1333,7 +1375,8 @@ export default function App() {
           subtitle: project.project_name,
           amount: project.remaining_payment,
           date: project.payment_deadline,
-          status
+          status,
+          label: reminderLabel(days)
         };
       }),
     ...debts
@@ -1342,7 +1385,7 @@ export default function App() {
         const days = daysUntil(debt.due_date);
         let status = "Normal";
         if (days !== null && days < 0) status = "Overdue";
-        else if (days !== null && days <= 3) status = "Due Soon";
+        else if (days !== null && days <= 7) status = "Due Soon";
         return {
           id: `rem-debt-${debt.id}`,
           type: "Hutang",
@@ -1350,14 +1393,15 @@ export default function App() {
           subtitle: debt.category,
           amount: debt.remaining_amount,
           date: debt.due_date,
-          status
+          status,
+          label: reminderLabel(days)
         };
       }),
     ...projects.map((project) => {
       const days = daysUntil(project.project_date);
       let status = "Normal";
       if (days !== null && days < 0) status = "Overdue";
-      else if (days !== null && days <= 3) status = "Due Soon";
+      else if (days !== null && days <= 7) status = "Due Soon";
       return {
         id: `rem-project-${project.id}`,
         type: "Project",
@@ -1365,7 +1409,8 @@ export default function App() {
         subtitle: project.client_name,
         amount: null,
         date: project.project_date,
-        status
+        status,
+        label: reminderLabel(days)
       };
     })
   ]
@@ -1381,6 +1426,47 @@ export default function App() {
       return aDays - bDays;
     })
     .slice(0, 5);
+
+  const withinAgendaWindow = (dateValue, days = 7) => {
+    if (!dateValue) return false;
+    const diff = daysUntil(dateValue);
+    return diff !== null && diff >= 0 && diff <= days;
+  };
+
+  const dailyAgendaItems = [
+    ...projects
+      .filter((project) => withinAgendaWindow(project.project_date, 7))
+      .map((project) => ({
+        id: `agenda-project-${project.id}`,
+        type: "Project",
+        title: project.project_name,
+        subtitle: project.client_name,
+        date: project.project_date,
+        amount: null
+      })),
+    ...projects
+      .filter((project) => project.remaining_payment > 0 && withinAgendaWindow(project.payment_deadline, 7))
+      .map((project) => ({
+        id: `agenda-client-${project.id}`,
+        type: "Client",
+        title: project.client_name,
+        subtitle: `Pelunasan ${project.project_name}`,
+        date: project.payment_deadline,
+        amount: project.remaining_payment
+      })),
+    ...debts
+      .filter((debt) => debt.remaining_amount > 0 && withinAgendaWindow(debt.due_date, 7))
+      .map((debt) => ({
+        id: `agenda-debt-${debt.id}`,
+        type: "Hutang",
+        title: debt.lender_name,
+        subtitle: debt.category,
+        date: debt.due_date,
+        amount: debt.remaining_amount
+      }))
+  ]
+    .sort((a, b) => new Date(a.date) - new Date(b.date))
+    .slice(0, 6);
 
   const filteredReminderItems = reminderItems.filter((item) => {
     if (reminderFilter === "Semua") return true;
@@ -1762,11 +1848,18 @@ export default function App() {
                 <input
                   className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
                   placeholder="Password"
-                  type="password"
+                  type={showLoginPassword ? "text" : "password"}
                   value={loginForm.password}
                   onChange={(event) => setLoginForm((prev) => ({ ...prev, password: event.target.value }))}
                   required
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowLoginPassword((prev) => !prev)}
+                  className="justify-self-end text-xs font-semibold text-primary"
+                >
+                  {showLoginPassword ? "Hide Password" : "Show Password"}
+                </button>
                 <button
                   className="w-full rounded-2xl bg-gradient-to-r from-[#6366f1] to-[#3b82f6] px-4 py-3 text-sm font-semibold text-white"
                   disabled={authLoading}
@@ -1808,7 +1901,7 @@ export default function App() {
                 <input
                   className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
                   placeholder="Password"
-                  type="password"
+                  type={showRegisterPassword ? "text" : "password"}
                   value={registerForm.password}
                   onChange={(event) => setRegisterForm((prev) => ({ ...prev, password: event.target.value }))}
                   required
@@ -1816,11 +1909,27 @@ export default function App() {
                 <input
                   className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
                   placeholder="Confirm Password"
-                  type="password"
+                  type={showRegisterConfirmPassword ? "text" : "password"}
                   value={registerForm.confirm}
                   onChange={(event) => setRegisterForm((prev) => ({ ...prev, confirm: event.target.value }))}
                   required
                 />
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowRegisterPassword((prev) => !prev)}
+                    className="text-xs font-semibold text-primary"
+                  >
+                    {showRegisterPassword ? "Hide Password" : "Show Password"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowRegisterConfirmPassword((prev) => !prev)}
+                    className="text-xs font-semibold text-primary"
+                  >
+                    {showRegisterConfirmPassword ? "Hide Confirm" : "Show Confirm"}
+                  </button>
+                </div>
                 <button
                   className="w-full rounded-2xl bg-gradient-to-r from-[#6366f1] to-[#3b82f6] px-4 py-3 text-sm font-semibold text-white"
                   disabled={authLoading}
@@ -1849,10 +1958,10 @@ export default function App() {
 
       <main className="flex-1 p-4 sm:p-6 lg:p-8 pb-28 lg:pb-8">
         <div className="flex flex-col gap-6">
-          <div className="lg:hidden relative flex items-center justify-between px-1">
+          <div className="lg:hidden relative flex items-center justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-400">{BRAND_NAME}</p>
-              <p className="text-lg font-semibold text-primary">{ACTIVE_TITLES[active]}</p>
+              <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">{BRAND_NAME}</p>
+              <p className="text-2xl font-semibold leading-tight text-primary">{ACTIVE_TITLES[active]}</p>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -1860,20 +1969,20 @@ export default function App() {
                   setIsProfileMenuOpen((prev) => !prev);
                   setIsNotifOpen(false);
                 }}
-                className="h-10 w-10 rounded-full border border-slate-200 bg-white text-base"
+                className="h-11 w-11 rounded-full border border-slate-200 bg-white text-base shadow-sm"
                 aria-label="Profil"
               >
-                👤
+                <span className="mi text-slate-700">person</span>
               </button>
               <button
                 onClick={() => {
                   setIsNotifOpen((prev) => !prev);
                   setIsProfileMenuOpen(false);
                 }}
-                className="relative h-10 w-10 rounded-full border border-slate-200 bg-white text-base"
+                className="relative h-11 w-11 rounded-full border border-slate-200 bg-white text-base shadow-sm"
                 aria-label="Notifikasi"
               >
-                🔔
+                <span className="mi text-slate-700">notifications</span>
                 {visibleReminderItems.length > 0 && (
                   <span className="absolute -right-1 -top-1 grid h-5 min-w-[20px] place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold text-white">
                     {visibleReminderItems.length}
@@ -1996,7 +2105,7 @@ export default function App() {
 
           {active === "dashboard" && !dataLoading && summary && (
             <>
-              <div className="fixed bottom-28 right-4 sm:bottom-6 sm:right-6 z-40 flex flex-col items-end gap-3">
+              <div className="fixed bottom-28 right-4 sm:bottom-6 sm:right-6 z-40 hidden md:flex flex-col items-end gap-3">
                 {isFabOpen && (
                   <div className="flex flex-col gap-2">
                     <button
@@ -2028,21 +2137,21 @@ export default function App() {
                 </button>
               </div>
 
-              <section className="md:hidden rounded-[28px] bg-gradient-to-br from-[#4f99ec] via-[#4e82df] to-[#5456d9] p-5 text-white shadow-card">
-                <p className="text-xs uppercase tracking-[0.18em] text-white/70">Saldo Saat Ini</p>
-                <h3 className="mt-2 text-3xl font-semibold">
+              <section className="md:hidden rounded-[24px] bg-gradient-to-br from-[#2d96f4] via-[#3276dd] to-[#3f5fd7] p-5 text-white shadow-card">
+                <p className="text-[11px] uppercase tracking-[0.18em] text-white/70">Saldo Saat Ini</p>
+                <h3 className="mt-1 text-[44px] leading-none font-semibold tracking-tight">
                   {formatCurrency(hasTransactions ? currentSaldo : summary.totalSaldo)}
                 </h3>
-                <div className="mt-5 grid grid-cols-2 gap-2">
-                  <div className="rounded-2xl bg-white/15 p-3">
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <div className="rounded-2xl bg-white/15 p-3 backdrop-blur">
                     <p className="text-[11px] text-white/70">Money In</p>
-                    <p className="mt-1 text-sm font-semibold">
+                    <p className="mt-1 text-base font-semibold">
                       {formatCurrency(hasTransactions ? monthlyIncome : summary.pemasukan)}
                     </p>
                   </div>
-                  <div className="rounded-2xl bg-white/15 p-3">
+                  <div className="rounded-2xl bg-white/15 p-3 backdrop-blur">
                     <p className="text-[11px] text-white/70">Money Out</p>
-                    <p className="mt-1 text-sm font-semibold">
+                    <p className="mt-1 text-base font-semibold">
                       {formatCurrency(hasTransactions ? monthlyExpense : summary.pengeluaran)}
                     </p>
                   </div>
@@ -2067,9 +2176,20 @@ export default function App() {
                   )}
                   {recentTransactions.slice(0, 5).map((item) => (
                     <div key={item.id} className="flex items-center justify-between rounded-2xl bg-slate-50 px-3 py-2.5">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-ink">{item.category}</p>
-                        <p className="text-[11px] text-slate-500">{formatDate(item.date)}</p>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div
+                          className={`h-8 w-8 rounded-xl grid place-items-center text-sm ${
+                            item.type === "income"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-rose-100 text-rose-700"
+                          }`}
+                        >
+                          {item.type === "income" ? "↘" : "↗"}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-ink">{item.category}</p>
+                          <p className="text-[11px] text-slate-500">{formatDate(item.date)}</p>
+                        </div>
                       </div>
                       <p
                         className={`whitespace-nowrap text-sm font-semibold ${
@@ -2116,6 +2236,56 @@ export default function App() {
 
                   <div className="card p-4 sm:p-6">
                     <LineChart data={cashflow} />
+                  </div>
+
+                  <div className="card p-4 sm:p-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-slate-500">Daily Agenda</p>
+                        <h3 className="text-lg font-semibold text-primary">7 Hari Ke Depan</h3>
+                      </div>
+                      <span className="text-xs text-slate-400">Project • Client • Hutang</span>
+                    </div>
+                    <div className="mt-4 space-y-2">
+                      {dailyAgendaItems.length === 0 && (
+                        <div className="rounded-xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+                          Tidak ada agenda mendatang dalam 7 hari.
+                        </div>
+                      )}
+                      {dailyAgendaItems.map((item) => (
+                        <div
+                          key={item.id}
+                          className="grid grid-cols-[92px_1fr_auto] items-center gap-3 rounded-xl bg-slate-50 px-3 py-2.5"
+                        >
+                          <p className="text-xs font-semibold text-primary">{formatDate(item.date)}</p>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-ink">{item.title}</p>
+                            <p className="truncate text-xs text-slate-500">
+                              {item.type} • {item.subtitle}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {item.amount !== null && (
+                              <span className="text-sm font-semibold text-primary">
+                                {formatCurrency(item.amount)}
+                              </span>
+                            )}
+                            <a
+                              href={toGoogleCalendarLink({
+                                title: `${item.type}: ${item.title}`,
+                                date: item.date,
+                                details: `${item.subtitle} - Finora Daily Agenda`
+                              })}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="px-2 py-1 rounded-full border border-slate-200 text-[11px] font-semibold text-primary"
+                            >
+                              Calendar
+                            </a>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
 
                   <div className="card p-4 sm:p-6">
@@ -2259,21 +2429,38 @@ export default function App() {
                                 {item.type} • {item.subtitle}
                               </p>
                             </div>
-                            <span
-                              className={`badge ${
-                                item.status === "Overdue"
-                                  ? "danger"
-                                  : item.status === "Due Soon"
-                                  ? "warning"
-                                  : "muted"
-                              }`}
-                            >
-                              {item.status}
-                            </span>
+                            <div className="flex items-center gap-1">
+                              {item.label && (
+                                <span className="badge muted">{item.label}</span>
+                              )}
+                              <span
+                                className={`badge ${
+                                  item.status === "Overdue"
+                                    ? "danger"
+                                    : item.status === "Due Soon"
+                                    ? "warning"
+                                    : "muted"
+                                }`}
+                              >
+                                {item.status}
+                              </span>
+                            </div>
                           </div>
                           <div className="mt-2 flex items-center justify-between">
                             <p className="text-[11px] text-slate-400">Deadline {formatDate(item.date)}</p>
                             <div className="flex items-center gap-1">
+                              <a
+                                href={toGoogleCalendarLink({
+                                  title: `${item.type}: ${item.title}`,
+                                  date: item.date,
+                                  details: `${item.subtitle} - Finora Reminder`
+                                })}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="px-2 py-1 rounded-full border border-slate-200 text-[11px] text-primary font-semibold"
+                              >
+                                Calendar
+                              </a>
                               <button
                                 onClick={() =>
                                   setSnoozedReminders((prev) => ({
@@ -2498,6 +2685,25 @@ export default function App() {
               </section>
             </>
           )}
+
+          <nav className="lg:hidden fixed bottom-3 left-1/2 z-50 w-[calc(100%-1.5rem)] -translate-x-1/2 rounded-3xl border border-slate-200 bg-white/95 px-2 py-2 shadow-card backdrop-blur">
+            <div className="grid grid-cols-4 gap-1">
+              {MOBILE_NAV_ITEMS.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => setActive(item.id)}
+                  className={`min-h-[42px] rounded-2xl px-1 text-[10px] font-semibold transition ${
+                    active === item.id
+                      ? "bg-gradient-to-r from-[#6366f1] to-[#3b82f6] text-white"
+                      : "text-slate-500"
+                  }`}
+                >
+                  <span className="mi block text-base leading-4">{item.icon}</span>
+                  <span className="block mt-1 truncate">{item.label}</span>
+                </button>
+              ))}
+            </div>
+          </nav>
 
           {active === "projects" && (
             <section className="card p-4 sm:p-6">
